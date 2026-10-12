@@ -72,13 +72,13 @@ TEAMS = [
     "AZ", "ATH", "ATL", "BAL", "BOS", "CHC", "CIN", "CLE", "COL", "CWS", "DET", "HOU", "KC", "LAA", "LAD",
     "MIA", "MIL", "MIN", "NYM", "NYY", "PHI", "PIT", "SD", "SEA", "SF", "STL", "TB", "TEX", "TOR", "WSH",
 ]
-TEAM_ALIASES = {"ARI": "AZ"}   # FanGraphs / salaries.csv code -> Statcast
+TEAM_ALIASES = {"ARI": "AZ"}   # FanGraphs / salaries file code -> Statcast
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 REPORT_PATH = export_report_data.MISSING_REPORT_PATH
 REPORT_COLUMNS = ["PitcherId", "Pitcher", "Team", "Problem", "Fix", "ContractStatus_est", "EstYearsControl", "Pitches2025"]
-PROBLEM_DEFAULT = "not in salaries.csv"
+PROBLEM_DEFAULT = "not in salaries file"
 PROBLEM_MISMATCH = "status mismatch (estimate says arb, defaulted to FA)"
-PROBLEM_NO_SALARY = "no salary (not in salaries.csv, no debut date)"
+PROBLEM_NO_SALARY = "no salary (not in salaries file, no debut date)"
 PROBLEM_NO_CONTROL = "missing (1 yr assumed)"
 FIX_DEFAULT = "default min"
 FIX_NEEDS_DATA = "needs data"
@@ -115,7 +115,7 @@ def check_salaries():
     salaries = contract_status.load_salaries(verbose=True)
     if salaries is None:
         return None
-    print(f"salaries.csv: {len(salaries)} unique PitcherIds (dtype {salaries['PitcherId'].dtype}), "
+    print(f"{contract_status.SALARIES_PATH.name}: {len(salaries)} unique PitcherIds (dtype {salaries['PitcherId'].dtype}), "
           f"{salaries['SalariesTeam'].nunique()} teams; columns: {', '.join(salaries.columns)}")
     return salaries
 
@@ -178,13 +178,13 @@ def excluded_non_pitchers(teams: list[str]) -> pd.DataFrame:
 
 def print_report_summary(report: pd.DataFrame, rows: pd.DataFrame, excluded: pd.DataFrame, teams: list[str]):
     source = rows["SalarySource"].map({
-        risk_adjusted_value.SALARY_SOURCE_CSV: "salaries.csv rows",
+        risk_adjusted_value.SALARY_SOURCE_CSV: "salaries file rows",
         risk_adjusted_value.SALARY_SOURCE_PRE_ARB: "pre-arb minimum",
         risk_adjusted_value.SALARY_SOURCE_DEFAULT: "default minimum",
         risk_adjusted_value.SALARY_SOURCE_TWO_WAY: "two-way (not valued)",
     }).fillna("needs data")
     counts = pd.crosstab(rows["Team"], source).reindex(
-        index=teams, columns=["salaries.csv rows", "pre-arb minimum", "default minimum", "needs data", "two-way (not valued)"],
+        index=teams, columns=["salaries file rows", "pre-arb minimum", "default minimum", "needs data", "two-way (not valued)"],
         fill_value=0)
     counts["excluded non-pitchers"] = excluded.groupby("Team").size().reindex(teams, fill_value=0)
     counts.loc["TOTAL"] = counts.sum()
@@ -209,7 +209,7 @@ def run(teams: list[str]):
         (LOG_DIR / f"run_{scope}.txt").write_text(f"python -m analysis.run_all, {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
     runner = Runner()
 
-    print("── salaries.csv check ──")
+    print(f"── {contract_status.SALARIES_PATH.name} check ──")
     check_salaries()
 
     print(f"\n── 1. Rosters for {len(teams)} team(s) ──")
@@ -227,7 +227,7 @@ def run(teams: list[str]):
         league = pd.DataFrame(columns=LEAGUE_COLUMNS + ["Pitcher", "PitcherTeam"])
     stuff = runner.step("league", "stuff_plus_proxy", stuff_plus_proxy.grade_league, train_df=league)
     if stuff is not None:
-        runner.step("league", "stuff v1 comparison", stuff_plus_proxy.compare_to_v1, stuff[1])
+        runner.step("league", "stuff v1/v2 comparison", stuff_plus_proxy.compare_versions, stuff[1])
     location = runner.step("league", "location_plus_proxy", location_plus_proxy.grade_league)
     upside = runner.step("league", "asymmetric_upside", asymmetric_upside.grade_league, df=league)
     volatility = runner.step("league", "volatility_discount", volatility_discount.grade_league)

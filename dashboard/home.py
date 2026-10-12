@@ -143,6 +143,9 @@ st.markdown(
 # (risk_adjusted_value.injury_risk_score) and the 100 + 10z scale (utils.scale_100).
 STUFF_FEATURES, STUFF_FOLDS, MIN_SWINGS_TO_TRAIN, MIN_SWINGS_FOR_BEST = code_constants(
     "analysis/stuff_plus_proxy.py", "FEATURES", "N_FOLDS", "MIN_PITCHES_PER_TYPE", "MIN_SAMPLE_FOR_SUMMARY_V1")
+STUFF_MODEL, STUFF_PITCH_GROUPS, STUFF_INNER_FOLDS, COMPARABLE_NEIGHBORS, COMPARABLE_DISTANCE_PCT = code_constants(
+    "analysis/stuff_plus_proxy.py", "STUFF_MODEL", "PITCH_GROUPS", "N_INNER_FOLDS", "COMPARABLE_NEIGHBORS",
+    "COMPARABLE_DISTANCE_PCT")
 LOCATION_FEATURES, LOCATION_FOLDS, PITCH_GROUPS, PLATE_HALF_WIDTH_FT = code_constants(
     "analysis/location_plus_proxy.py", "FEATURES", "N_FOLDS", "PITCH_GROUPS", "PLATE_HALF_WIDTH_FT")
 EDGE_BAND, MEATBALL_MAX = code_constants("analysis/asymmetric_upside.py", "EDGE_BAND", "MEATBALL_MAX")
@@ -226,31 +229,54 @@ about where the pitch was thrown.
   90 is below average.
 - By pitch type, each pitch is compared to the league's pitches **of the same type** (a slider to other sliders).
 - Each pitcher is scored by a model that never saw his own pitches (out-of-fold), so the grade isn't inflated.
+- A pitch shape the model has few comparable examples of (a submariner's sinker, say) is pulled toward 100, because
+  the model is guessing there.
 """
     )
     shape = ", ".join(STUFF_FEATURE_NAMES.get(f, f) for f in STUFF_FEATURES)
+    stuff_groups = "; ".join(f"{g}: {', '.join(pitch_abbr(c) for c in codes)}" for g, codes in STUFF_PITCH_GROUPS.items())
+    tuned = f"tuned by an inner {STUFF_INNER_FOLDS}-fold cross-validation on the training pitchers only"
+    stuff_model_text = {
+        "A": "a gradient-boosted model (100 trees, depth 3) for each pitch type",
+        "B": "a logistic regression for each pitch type (standardized inputs plus squared velocity, IVB and HB)",
+        "C": f"a gradient-boosted model (histogram-based, {tuned}) for each pitch type",
+        "D": f"one gradient-boosted model per pitch group ({stuff_groups}) with the pitch type as an input, {tuned}",
+    }[STUFF_MODEL]
+    p_bar = r"ar p_{	ext{group}}" if STUFF_MODEL == "D" else r"ar p_{	ext{type}}"
     how_its_calculated([
         ("**Mirror left-handers** into the right-hander's frame, so the same pitch shape has the same sign for both "
          "hands. HB = horizontal break, x = release side (feet), θ = spin axis (degrees).",
          r"\text{HB} \to -\text{HB}, \qquad x \to -x, \qquad \theta \to (360 - \theta) \bmod 360"),
-        (f"**Predict whiffs from shape.** For each pitch type, a gradient-boosted model estimates p, the chance of a "
-         f"swing and miss when the batter swings, from the pitch's shape: {shape}. It is trained on swings only, then "
-         f"scores every pitch of that type. It is out-of-fold by pitcher ({STUFF_FOLDS} folds): a pitcher's own "
-         f"pitches never train the model that grades him. A pitch type needs {MIN_SWINGS_TO_TRAIN}+ league swings "
-         f"to get a model.",
+        (f"**Predict whiffs from shape.** p = the chance of a swing and miss when the batter swings, estimated from "
+         f"the pitch's shape ({shape}) by {stuff_model_text}. That model type won a comparison of four (out-of-fold "
+         f"log loss, rule set before looking). It is trained on swings only, then scores every pitch. It is "
+         f"out-of-fold by pitcher ({STUFF_FOLDS} folds): a pitcher's own pitches never train the model that grades "
+         f"him. A pitch type needs {MIN_SWINGS_TO_TRAIN}+ league swings to get a model.",
          r"p = P(\text{whiff} \mid \text{swing}, \text{shape})"),
-        ("**Pitch ratio.** Compare each pitch's p to p̄, the league's average p over every pitch of that type.",
-         r"\text{StuffPlus} = 100 \times \frac{p}{\bar p_{\text{type}}}"),
-        ("**Pitcher overall.** Average his pitch types' ratios, weighted by n_j, the number of pitches of type j he "
-         "threw.",
-         r"\text{StuffPlus}_{\text{pitcher}} = \frac{\sum_j n_j \cdot \text{StuffPlus}_j}{\sum_j n_j}"),
-        (f"**Scale it** (what the dashboard shows). Overall: z against Q. By pitch type: z against pitcher and pitch "
-         f"type rows with {MIN_PITCHES_PER_TYPE_FOR_SCALE}+ pitches of that type, within that type only.",
-         rf"{tx(STUFF_LABEL)}_{{\text{{scaled}}}} = 100 + 10 \cdot z(\text{{StuffPlus}})"),
+        ("**Pitch ratio** (kept for reference; nothing below averages it across pitch types). Each pitch's p "
+         "compared to p̄, the league's average p over every pitch of that "
+         + ("group." if STUFF_MODEL == "D" else "type."),
+         rf"\text{{ratio}} = 100 \times \frac{{p}}{{{p_bar}}}"),
+        (f"**Grade each pitch type within its type.** z_j = how many SDs his average ratio for pitch type j is from "
+         f"the league's, against pitcher and pitch type rows with {MIN_PITCHES_PER_TYPE_FOR_SCALE}+ pitches of that "
+         f"type.",
+         rf"z_j = z\left(\overline{{\text{{ratio}}}}_j\right), \qquad {tx(STUFF_LABEL)}_{{j,\ \text{{scaled}}}} = 100 + 10 \cdot z_j"),
+        ("**Pitcher overall.** Average his per-type z, weighted by n_j, the number of pitches of type j he threw, then "
+         "put that on the 100 + 10z scale against Q. Averaging z-scores instead of ratios keeps one extreme pitch "
+         "type from dominating.",
+         rf"\bar z = \frac{{\sum_j n_j \, z_j}}{{\sum_j n_j}}, \qquad {tx(STUFF_LABEL)}_{{\text{{scaled}}}} = 100 + 10 \cdot z(\bar z)"),
         (f"**Small-sample version.** Pulled toward 100. n = his pitches (of that type, for a pitch-type row); k comes "
          f"from that pitch type, or the overall k if the type has none. Blank under {MIN_PITCHES_TO_DISPLAY} pitches "
          f"({MIN_PITCHES_PER_TYPE_TO_DISPLAY} for one pitch type).",
-         tx(STUFF_LABEL) + " = " + REGRESSED_TEX.format(obs=tx(STUFF_LABEL) + r"_{\text{scaled}}", mean="100")),
+         tx(STUFF_LABEL) + r"_{\text{reg}} = " + REGRESSED_TEX.format(obs=tx(STUFF_LABEL) + r"_{\text{scaled}}", mean="100")),
+        (f"**Comparable pitches** (what the dashboard shows). For each of his pitches: of its {COMPARABLE_NEIGHBORS} "
+         f"nearest pitches thrown by OTHER pitchers that trained his model (same pitch group, standardized shape), "
+         f"the share closer than the league's {COMPARABLE_DISTANCE_PCT}th-percentile neighbor distance d. c = that "
+         f"share averaged over his pitches (weighted by pitch type usage overall), from 0 (nothing like it) to 1. "
+         f"The grade is shrunk toward 100 by c, so a shape the model can only extrapolate to can't produce an "
+         f"extreme grade.",
+         rf"c = \operatorname{{mean}}_{{\text{{his pitches}}}} \frac{{\#\{{\text{{neighbors closer than }} d\}}}}{{{COMPARABLE_NEIGHBORS}}}, \qquad "
+         rf"{tx(STUFF_LABEL)} = 100 + \left({tx(STUFF_LABEL)}_{{\text{{reg}}}} - 100\right) \cdot c"),
     ])
 
 with st.expander(f"**{LOCATION_LABEL}**: command"):
@@ -306,10 +332,10 @@ part a coaching staff can work on.
         ("**The gap**, in standard deviations. Both inputs are the small-sample versions; the mean and SD in each z "
          "come from Q's unadjusted values." + command_note,
          rf"\text{{Upside}} = z({tx(STUFF_LABEL)}) - z({COMMAND_TEX})"),
-        (f"**Pitch mix flag.** His most-thrown pitch type is not his best Stuff+ pitch. \"Best\" = the highest pitch "
-         f"ratio (Stuff+ step 3) among his pitch types with {MIN_SWINGS_FOR_BEST}+ swings, so a rarely thrown pitch "
-         f"can't be best by luck.",
-         r"\text{Flag} = \left[\ \text{most-thrown type} \neq \underset{j}{\arg\max}\ \text{StuffPlus}_j\ \right]"),
+        (f"**Pitch mix flag.** His most-thrown pitch type is not his best Stuff+ pitch. \"Best\" = the highest "
+         f"pitch-type Stuff+ (graded within its type, the dashboard value) among his pitch types with "
+         f"{MIN_SWINGS_FOR_BEST}+ swings, so a rarely thrown pitch can't be best by luck.",
+         rf"\text{{Flag}} = \left[\ \text{{most-thrown type}} \neq \underset{{j}}{{\arg\max}}\ {tx(STUFF_LABEL)}_j\ \right]"),
     ])
 
 with st.expander("**Legacy command proxy**: the old command stat"):
@@ -575,7 +601,7 @@ average based on how reliable it is at that sample size:
 )
 st.code("Adjusted value = (n × observed + k × league average) / (n + k)", language=None)
 k_stuff, k_location = k_of.get("StuffPlus_Scaled"), k_of.get("LocationPlus")
-k_examples = (f" Stuff+ is reliable almost immediately (k ≈ {k_stuff:.0f} pitch); Location+ takes about "
+k_examples = (f" Stuff+ is reliable almost immediately (k ≈ {k_stuff:.0f} pitch{'' if round(k_stuff) == 1 else 'es'}); Location+ takes about "
               f"{k_location:.0f} pitches." if k_stuff is not None and k_location is not None else "")
 st.markdown(
     f"""

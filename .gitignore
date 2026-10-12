@@ -4,8 +4,12 @@ venv/
 .venv/
 data/*.parquet
 data/*.csv
+!data/salaries_*.csv
+!data/salaries_manual.csv
+!data/missing_contract_report.csv
 data/*.json
 data/raw/
+data/sources/
 data/results/
 .ipynb_checkpoints/
 .DS_Store

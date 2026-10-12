@@ -7,7 +7,7 @@ import pandas as pd
 from config import DEFAULT_SEASON, SEASON
 
 # data/ layout (see data/README.md):
-#   data/                       files you edit or read: salaries.csv, missing_contract_report.csv
+#   data/                       files you edit or read: salaries_<YYYY>.csv, missing_contract_report.csv
 #   data/raw/statcast/          cached Statcast pulls (league months, teams, single pitchers)
 #   data/raw/mlb_api/           cached MLB Stats API responses (debut dates, transactions, game logs)
 #   data/results/               each analysis module's output tables for config.DEFAULT_SEASON (2025)

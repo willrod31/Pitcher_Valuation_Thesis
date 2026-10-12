@@ -3,8 +3,8 @@ Estimated contract status from MLB debut dates (MLB Stats API /people).
 
 Fills in ContractStatus / years of control so real salaries only have to be
 looked up by hand for arb and free-agent pitchers. risk_adjusted_value.py
-uses these only where data/salaries.csv is blank -- hand-entered values
-always win.
+uses these only where the season's salaries file (data/salaries_<SEASON>.csv)
+is blank -- hand-entered values always win.
 
 EstServiceYears is an APPROXIMATION: full seasons from the debut season up
 to (not including) config.SEASON, i.e. SEASON - debut year. It ignores
@@ -19,6 +19,7 @@ Opening Day.
 """
 import argparse
 import json
+import re
 
 import pandas as pd
 
@@ -28,12 +29,20 @@ from analysis.utils import CACHE_DIR, MLB_API_DIR, RESULTS_DIR
 
 DEBUT_CACHE_PATH = MLB_API_DIR / "mlb_debut_dates.json"
 OUT_PATH = RESULTS_DIR / "contract_status_est.csv"
-SALARIES_PATH = CACHE_DIR / "salaries.csv"
 BATCH_SIZE = 100
 
-# data/salaries.csv columns, and what load_salaries() renames to avoid colliding
+
+def salaries_path(season: int = SEASON):
+    """data/salaries_<season>.csv: that season's hand-entered contracts (salaries_2025.csv, salaries_2026.csv, ...)."""
+    return CACHE_DIR / f"salaries_{season}.csv"
+
+
+SALARIES_PATH = salaries_path()
+# Salaries file columns, and what load_salaries() renames to avoid colliding
 # with pipeline columns (Team would shadow the Statcast team label).
 SALARY_RENAMES = {"Team": "SalariesTeam"}
+# TeamPaid<YYYY> (TeamPaid2025, TeamPaid2026, ...) -> TeamPaid on load, so nothing downstream names a season
+TEAM_PAID_COLUMN = "TeamPaid"
 SALARY_FIELDS_CHECKED = ["Salary", "ContractStatus", "YearsControl", "PreArbYearsLeft", "ArbYearsLeft", "GuaranteedFuture"]
 
 PRE_ARB_YEARS = 3
@@ -57,37 +66,55 @@ def status_group(status) -> str | None:
     return "FA-eligible"
 
 
-def load_salaries(verbose: bool = False) -> pd.DataFrame | None:
-    """data/salaries.csv for config.SEASON, one row per PitcherId (Int64), or None if there's no file.
+def read_salaries_file(verbose: bool = False, season: int = SEASON) -> pd.DataFrame | None:
+    """salaries_path(season) as entered (that season's rows), TeamPaid<YYYY> renamed TeamPaid; None if there's no file.
+
+    No file = every pitcher falls back to the defaults, exactly as for a
+    pitcher with no row: league minimum, with control from the debut-date
+    estimate (pre-arb) or 1 year (risk_adjusted_value.resolve_contracts).
+    """
+    path = salaries_path(season)
+    if not path.exists():
+        if verbose:
+            print(f"No {path} found for {season} -- every pitcher falls back to the defaults "
+                  f"(league minimum + debut-date estimate of control, or 1 year).")
+        return None
+    raw = pd.read_csv(path)
+    if "Season" in raw:
+        raw = raw[raw["Season"].isna() | (raw["Season"] == season)]
+    paid = [c for c in raw.columns if re.fullmatch(r"TeamPaid\d{4}", c)]
+    if len(paid) > 1:
+        raise ValueError(f"{path.name} has more than one team-paid column: {paid}")
+    return raw.rename(columns={c: TEAM_PAID_COLUMN for c in paid})
+
+
+def load_salaries(verbose: bool = False, season: int = SEASON) -> pd.DataFrame | None:
+    """The salaries file for `season` (default config.SEASON), one row per PitcherId (Int64), or None if there's no file.
 
     - Blank PitcherId rows are dropped (listed when verbose) -- they can't be
       joined to Statcast.
     - Traded pitchers appear once per team. The row with the LARGEST Salary
-      is kept (his full 2025 contract, not a prorated release/minimum row),
+      is kept (his full-season contract, not a prorated release/minimum row),
       and ContractStatus / YearsControl / GuaranteedFuture come from that same
       row. What each team actually paid is in load_team_paid(). With verbose,
       any PitcherId whose rows disagree is printed with the Salary chosen.
     - Team -> SalariesTeam and Pitcher/Season are dropped so the merge in
       risk_adjusted_value.resolve_contracts never produces _x/_y columns.
     """
-    if not SALARIES_PATH.exists():
-        if verbose:
-            print(f"No {SALARIES_PATH} found -- only pre-arb estimates (league minimum) will get a Salary.")
+    raw = read_salaries_file(verbose, season)
+    if raw is None:
         return None
-    raw = pd.read_csv(SALARIES_PATH)
-    if "Season" in raw:
-        raw = raw[raw["Season"].isna() | (raw["Season"] == SEASON)]
 
     ids = pd.to_numeric(raw["PitcherId"], errors="coerce")
     bad = raw[ids.isna() | (ids % 1 != 0)]
     if verbose and not bad.empty:
-        print(f"Dropped {len(bad)} salaries.csv row(s) with a blank or non-integer PitcherId:")
+        print(f"Dropped {len(bad)} {salaries_path(season).name} row(s) with a blank or non-integer PitcherId:")
         print(bad[["PitcherId", "Pitcher", "Team"]].to_string(index=False))
     raw = raw[ids.notna() & (ids % 1 == 0)].copy()
     raw["PitcherId"] = ids[raw.index].astype("Int64")
 
     if verbose:
-        report_duplicate_conflicts(raw)
+        report_duplicate_conflicts(raw, salaries_path(season).name)
     salaries = largest_salary_first(raw).drop_duplicates("PitcherId", keep="first")
     return salaries.drop(columns=["Pitcher", "Season"], errors="ignore").rename(columns=SALARY_RENAMES)
 
@@ -105,13 +132,13 @@ def largest_salary_first(raw: pd.DataFrame) -> pd.DataFrame:
     return order.drop(columns=["_filled", "_row"])
 
 
-def report_duplicate_conflicts(raw: pd.DataFrame) -> pd.DataFrame:
+def report_duplicate_conflicts(raw: pd.DataFrame, file_name: str = SALARIES_PATH.name) -> pd.DataFrame:
     """Print PitcherIds listed more than once whose rows disagree on Salary / contract fields, with the row chosen."""
     dup = raw[raw["PitcherId"].duplicated(keep=False)]
     fields = [c for c in SALARY_FIELDS_CHECKED if c in dup]
     differs = dup.groupby("PitcherId")[fields].nunique(dropna=False) > 1
     chosen = largest_salary_first(dup).drop_duplicates("PitcherId", keep="first")
-    print(f"{dup['PitcherId'].nunique()} PitcherId(s) listed more than once in salaries.csv (traded midseason); "
+    print(f"{dup['PitcherId'].nunique()} PitcherId(s) listed more than once in {file_name} (traded); "
           f"the row with the largest Salary is kept (all contract fields from that row).")
     for field in fields:
         ids = differs.index[differs[field]]
@@ -129,29 +156,28 @@ def report_duplicate_conflicts(raw: pd.DataFrame) -> pd.DataFrame:
     return differs
 
 
-# FanGraphs team codes in salaries.csv -> Statcast codes used everywhere else
+# FanGraphs team codes in the salaries files -> Statcast codes used everywhere else
 FANGRAPHS_TO_STATCAST = {"ARI": "AZ"}
 
 
 def load_team_paid() -> pd.DataFrame:
-    """One row per salaries.csv pitcher x team: PitcherId, Team (Statcast code), ListedSalary, TeamPaid2025.
+    """One row per salaries-file pitcher x team: PitcherId, Team (Statcast code), ListedSalary, TeamPaid.
 
-    TeamPaid2025 is what that team actually paid a pitcher traded midseason
-    (blank when the team paid the full listed Salary). Kept separate from
-    load_salaries(), which keeps one row per pitcher for valuation.
+    TeamPaid (TeamPaid<SEASON> in the file) is what that team actually paid
+    a pitcher traded midseason (blank when the team paid the full listed
+    Salary). Kept separate from load_salaries(), which keeps one row per
+    pitcher for valuation.
     """
-    if not SALARIES_PATH.exists():
-        return pd.DataFrame(columns=["PitcherId", "Team", "ListedSalary", "TeamPaid2025"])
-    raw = pd.read_csv(SALARIES_PATH)
-    if "Season" in raw:
-        raw = raw[raw["Season"].isna() | (raw["Season"] == SEASON)]
+    raw = read_salaries_file()
+    if raw is None:
+        return pd.DataFrame(columns=["PitcherId", "Team", "ListedSalary", TEAM_PAID_COLUMN])
     ids = pd.to_numeric(raw["PitcherId"], errors="coerce")
     raw = raw[ids.notna() & (ids % 1 == 0)].assign(PitcherId=ids.astype("Int64"))
-    if "TeamPaid2025" not in raw:
-        raw["TeamPaid2025"] = pd.NA
+    if TEAM_PAID_COLUMN not in raw:
+        raw[TEAM_PAID_COLUMN] = pd.NA
     return pd.DataFrame({
         "PitcherId": raw["PitcherId"], "Team": raw["Team"].replace(FANGRAPHS_TO_STATCAST),
-        "ListedSalary": raw["Salary"], "TeamPaid2025": raw["TeamPaid2025"],
+        "ListedSalary": raw["Salary"], TEAM_PAID_COLUMN: raw[TEAM_PAID_COLUMN],
     }).reset_index(drop=True)
 
 
@@ -229,15 +255,51 @@ def run(pitcher: str | None = None, team: str | None = None, force_refresh: bool
     salaries = load_salaries()
     if salaries is not None:
         diff = disagreements(est, salaries)
-        print(f"\n{len(diff)} pitcher(s) where the estimate disagrees with salaries.csv ContractStatus:")
+        print(f"\n{len(diff)} pitcher(s) where the estimate disagrees with {SALARIES_PATH.name} ContractStatus:")
         if not diff.empty:
             print(diff.to_string(index=False))
 
 
+DASHBOARD_REPORT_PATH = CACHE_DIR.parent / "dashboard" / "data" / "pitcher_report_data.csv"
+
+
+def validate_salaries(season: int) -> pd.DataFrame | None:
+    """Contracts-only check of salaries_path(season): rows per team, ContractStatus counts, top 10 salaries,
+    traded pitchers' Salary conflicts (with the Salary load_salaries keeps), and overlap with the dashboard's
+    pitchers (config.DEFAULT_SEASON) by PitcherId. Reads the file only -- no Statcast, no results."""
+    raw = read_salaries_file(verbose=True, season=season)
+    if raw is None:
+        return None
+    name = salaries_path(season).name
+    print(f"── {name}: {len(raw)} rows, {raw['PitcherId'].nunique()} unique PitcherIds, "
+          f"{raw['PitcherId'].isna().sum()} blank PitcherId(s), {raw['Team'].nunique()} teams ──")
+    print("\nRows per team:")
+    print(raw["Team"].value_counts().sort_index().to_frame("Rows").T.to_string())
+    print("\nRows by ContractStatus:")
+    print(raw["ContractStatus"].value_counts(dropna=False).to_string())
+    print("\n10 highest salaries:")
+    top = raw.sort_values("Salary", ascending=False).head(10)
+    print(top[["Pitcher", "Team", "Salary", "ContractStatus", "YearsControl"]].to_string(index=False))
+
+    print()
+    salaries = load_salaries(verbose=True, season=season)   # prints the traded pitchers' conflicts + the Salary kept
+    if DASHBOARD_REPORT_PATH.exists():
+        shown = set(pd.read_csv(DASHBOARD_REPORT_PATH, usecols=["PitcherId"])["PitcherId"])
+        ids = set(salaries["PitcherId"].astype(int))
+        print(f"\n{len(ids)} unique {season} PitcherIds: {len(ids & shown)} match a pitcher in the dashboard data "
+              f"({DASHBOARD_REPORT_PATH.name}), {len(ids - shown)} are new (not in it)")
+    return salaries
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Estimate contract status / years of control from MLB debut dates.")
+    parser.add_argument("--validate", type=int, default=None, metavar="SEASON",
+                        help="Only print the contracts check of data/salaries_<SEASON>.csv, e.g. --validate 2026")
     parser.add_argument("--pitcher", default=None, help='One pitcher, e.g. --pitcher "Paul Skenes"')
     parser.add_argument("--team", default=None, help="Every pitcher on a team's Stuff+ roster, e.g. --team PIT")
     parser.add_argument("--refresh", action="store_true", help="Re-pull debut dates instead of using the cache")
     args = parser.parse_args()
-    run(pitcher=args.pitcher, team=args.team, force_refresh=args.refresh)
+    if args.validate:
+        validate_salaries(args.validate)
+    else:
+        run(pitcher=args.pitcher, team=args.team, force_refresh=args.refresh)

@@ -24,7 +24,7 @@ ActualWAR<SEASON> is the pitcher's real FIP-WAR that season (analysis/fip_war.py
 and SurplusActual<SEASON> = ActualWAR x $/WAR - that season's salary, a look-back
 number only.
 
-Contracts come from the hand-collected data/salaries.csv (joined on
+Contracts come from the hand-collected data/salaries_<SEASON>.csv (joined on
 PitcherId). Blank ContractStatus / YearsControl / PreArbYearsLeft /
 ArbYearsLeft fall back to contract_status.py's debut-date estimate; blank
 Salary for a pre-arb pitcher falls back to the league minimum. Hand-entered
@@ -99,9 +99,9 @@ FREE_AGENT_NOTE = f"Free agent after {SEASON}: no control value"
 SURPLUS_BY_YEAR_PATH = RESULTS_DIR / "surplus_by_year.csv"
 
 CONTRACT_FIELDS = ["ContractStatus", "YearsControl", "PreArbYearsLeft", "ArbYearsLeft"]
-SALARY_SOURCE_CSV = "salaries.csv"
+SALARY_SOURCE_CSV = "salaries file"   # data/salaries_<SEASON>.csv
 SALARY_SOURCE_PRE_ARB = "Pre-arb: league minimum (debut-date estimate)"
-SALARY_SOURCE_DEFAULT = "Default: league minimum (not in salaries.csv)"
+SALARY_SOURCE_DEFAULT = "Default: league minimum (not in salaries file)"
 SALARY_SOURCE_TWO_WAY = "Two-way player: not valued"
 TWO_WAY_NOTE = "Two-way player: contract not valued"
 VOLATILITY_PERCENTILE_USED = "VolatilityPercentile_Reg" if USE_REGRESSED else "VolatilityPercentile"
@@ -218,18 +218,18 @@ def add_actual_war(merged: pd.DataFrame) -> pd.DataFrame:
 def resolve_contracts(merged: pd.DataFrame, salaries: pd.DataFrame | None) -> pd.DataFrame:
     """2025 contract for every pitcher, in this order of precedence:
 
-    1. salaries.csv row: its Salary, ContractStatus and YearsControl win
+    1. salaries file row: its Salary, ContractStatus and YearsControl win
        (blank YearsControl / pre-arb / arb years fall back to the debut-date estimate).
-    2. Not in salaries.csv, pre-arb by the debut-date estimate: league minimum,
+    2. Not in the salaries file, pre-arb by the debut-date estimate: league minimum,
        estimated years of control (SalarySource = SALARY_SOURCE_PRE_ARB).
-    3. Not in salaries.csv, not pre-arb by the estimate: league minimum,
+    3. Not in the salaries file, not pre-arb by the estimate: league minimum,
        YearsControl = 1, ContractStatus = "FA" (SalarySource = SALARY_SOURCE_DEFAULT).
     4. No debut date either: no Salary ("needs data" in the missing-contract report).
 
     StatusMismatch only flags statuses that came from the debut-date estimate:
-    the estimate says arb but rule 3 assumed FA. When salaries.csv has a row,
+    the estimate says arb but rule 3 assumed FA. When the salaries file has a row,
     its status wins and is never flagged (EstimateDisagrees keeps the
-    estimate-vs-salaries.csv comparison, for reference only).
+    estimate-vs-salaries-file comparison, for reference only).
     Two-way players (config.TWO_WAY_EXCLUDE_VALUE) get no Salary: ContractValued = False.
     """
     est = estimate_contract_status(merged[["PitcherId", "Pitcher"]])
@@ -240,7 +240,7 @@ def resolve_contracts(merged: pd.DataFrame, salaries: pd.DataFrame | None) -> pd
     if salaries is not None:
         overlap = (set(salaries.columns) & set(merged.columns)) - {"PitcherId"}
         if overlap:
-            raise ValueError(f"salaries.csv columns collide with pipeline columns: {sorted(overlap)}")
+            raise ValueError(f"salaries file columns collide with pipeline columns: {sorted(overlap)}")
         merged = merged.merge(salaries, on="PitcherId", how="left")
     for col in ["Salary", "AAV", "GuaranteedFuture", *CONTRACT_FIELDS]:
         if col not in merged:
@@ -251,7 +251,7 @@ def resolve_contracts(merged: pd.DataFrame, salaries: pd.DataFrame | None) -> pd
     hand_group = merged["ContractStatus"].map(status_group)
     merged["EstimateDisagrees"] = hand_group.notna() & merged["ContractStatus_est"].notna() & (hand_group != merged["ContractStatus_est"])
     merged["ContractStatus"] = hand_group.fillna(merged["ContractStatus_est"])
-    merged["ContractStatusSource"] = np.where(hand_group.notna(), "salaries.csv",
+    merged["ContractStatusSource"] = np.where(hand_group.notna(), SALARY_SOURCE_CSV,
                                               np.where(merged["ContractStatus_est"].notna(), "estimate", None))
 
     merged["ControlSource"] = np.where(merged["YearsControl"].notna(), "hand", "estimate")
@@ -408,13 +408,13 @@ def report_flags(scope: pd.DataFrame):
         print(default[["Pitcher", "ContractStatus_est", "EstServiceYears"]].to_string(index=False))
 
     estimated = scope[scope["InSalariesCsv"] & (scope["ControlSource"] != "hand")]
-    print(f"\n{len(estimated)} salaries.csv pitcher(s) with blank YearsControl (using estimate or 1 year):")
+    print(f"\n{len(estimated)} salaries file pitcher(s) with blank YearsControl (using estimate or 1 year):")
     if not estimated.empty:
         print(estimated[["Pitcher", "ContractStatus", "YearsControl", "ControlSource", "EstYearsControl"]].to_string(index=False))
 
     no_salary = scope[scope["Salary"].isna() & scope["ContractValued"]]
     if not no_salary.empty:
-        print(f"\n{len(no_salary)} pitcher(s) with no Salary (no salaries.csv row, no debut date) -- no surplus computed:")
+        print(f"\n{len(no_salary)} pitcher(s) with no Salary (no salaries file row, no debut date) -- no surplus computed:")
         print(no_salary[["Pitcher", "ContractStatus"]].to_string(index=False))
     two_way = scope[~scope["ContractValued"]]
     if not two_way.empty:
@@ -483,7 +483,7 @@ def show(merged: pd.DataFrame, team: str | None = None):
 
 
 def report_ungraded(team: str, merged: pd.DataFrame):
-    """Roster pitchers missing from the ranking (under MIN_PITCHES_TO_DISPLAY), incl. blank control in salaries.csv."""
+    """Roster pitchers missing from the ranking (under MIN_PITCHES_TO_DISPLAY), incl. blank control in the salaries file."""
     roster = team_roster_ids(team)
     missing = roster[~roster["PitcherId"].isin(merged["PitcherId"])]
     print(f"\n{len(missing)} {team} roster pitcher(s) not graded (under config.MIN_PITCHES_TO_DISPLAY = {MIN_PITCHES_TO_DISPLAY} pitches):")
@@ -493,7 +493,7 @@ def report_ungraded(team: str, merged: pd.DataFrame):
         blank = missing.merge(salaries, on="PitcherId")
         blank = blank[blank["YearsControl"].isna()]
         if not blank.empty:
-            print(f"  ...of these, blank YearsControl in salaries.csv: {', '.join(blank['Pitcher'])}")
+            print(f"  ...of these, blank YearsControl in the salaries file: {', '.join(blank['Pitcher'])}")
 
 
 if __name__ == "__main__":

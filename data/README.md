@@ -1,11 +1,15 @@
 # data/
 
-Everything here except this README is gitignored. It's either hand-maintained input,
-a cache that the scripts rebuild, or a module output. Paths are defined in `analysis/utils.py`.
+Everything here is gitignored except this README, the hand-entered salary files
+(`salaries_<YYYY>.csv`, `salaries_manual.csv`) and `missing_contract_report.csv`. The rest is a
+cache that the scripts rebuild or a module output. Paths are defined in `analysis/utils.py`.
+`sources/` (saved FanGraphs pages the salaries were entered from) is never committed.
 
 ```
 data/
-├── salaries.csv                  # INPUT, edited by hand: 2025 contracts (FanGraphs RosterResource saved pages)
+├── salaries_2025.csv             # INPUT, edited by hand: 2025 contracts (FanGraphs RosterResource saved pages)
+├── salaries_2026.csv             # INPUT, edited by hand: 2026 contracts (same source; blank ids filled from the MLB Stats API)
+│                                 #   the pipeline reads salaries_<SEASON>.csv; no file = league minimum + debut-date estimate
 ├── missing_contract_report.csv   # OUTPUT of run_all.py: pitchers on the default contract or still missing data
 ├── player_positions.csv          # cache: primary position per MLBAM id (MLB Stats API /people)
 ├── raw/                          # caches of external pulls -- safe to delete, but slow to rebuild

@@ -22,6 +22,8 @@ average until the sample says otherwise.
 
 Metrics (unit of n):
     StuffPlus_Scaled, overall and per pitch type   pitches
+        (overall: the mean of each pitch's z within its pitch type, which is what the
+        v3 pitcher grade averages; per type: the ratio, a linear transform of that z)
     LocationPlus, overall and per pitch type       pitches
     EdgePct, MeatballPct                           pitches
     BBPct                                          plate appearances
@@ -34,6 +36,7 @@ regress (stuff_plus_proxy, location_plus_proxy, asymmetric_upside,
 volatility_discount), since they read data/stabilization.csv.
 
     python -m analysis.stabilization
+    python -m analysis.stabilization --only-stuff   (refit the Stuff+ rows only; every other row is kept as is)
 """
 import argparse
 
@@ -42,7 +45,7 @@ import pandas as pd
 from scipy.optimize import minimize_scalar
 
 from analysis.utils import BASE_RESULTS_DIR
-from config import DEFAULT_SEASON, MIN_PITCHES_FOR_INCLUSION, SEASON
+from config import DEFAULT_SEASON, MIN_PITCHES_FOR_INCLUSION, MIN_PITCHES_PER_TYPE_FOR_SCALE, SEASON
 
 # Always the DEFAULT_SEASON (2025) fit: other seasons reuse these k values, they don't refit them.
 STABILIZATION_PATH = BASE_RESULTS_DIR / "stabilization.csv"
@@ -138,9 +141,19 @@ def qualified_only(df: pd.DataFrame, id_col: str = "PitcherId") -> pd.DataFrame:
 
 
 def stuff_units() -> pd.DataFrame:
+    """Qualified pitchers' scored pitches: StuffPlus (ratio) and StuffZ (the ratio as a z within the pitch type).
+
+    StuffZ uses the same pool as the v3 grade: pitcher x pitch type means with
+    MIN_PITCHES_PER_TYPE_FOR_SCALE+ pitches of that type. A pitcher's mean
+    StuffZ is his usage-weighted per-type z, i.e. what his overall grade scales.
+    """
     from analysis.stuff_plus_proxy import build_league_scores
-    scored = build_league_scores()
-    return qualified_only(scored[["PitcherId", "PitchType", "StuffPlus"]])
+    scored = build_league_scores()[["PitcherId", "PitchType", "StuffPlus"]]
+    means = scored.groupby(["PitcherId", "PitchType"])["StuffPlus"].agg(["mean", "size"])
+    pool = means[means["size"] >= MIN_PITCHES_PER_TYPE_FOR_SCALE].groupby("PitchType")["mean"].agg(["mean", "std"])
+    units = qualified_only(scored)
+    units = units.assign(StuffZ=(units["StuffPlus"] - units["PitchType"].map(pool["mean"])) / units["PitchType"].map(pool["std"]))
+    return units
 
 
 def location_units() -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -180,7 +193,7 @@ def volatility_units() -> pd.DataFrame:
 
 # ── Table ────────────────────────────────────────────────────────────────────
 
-def build_table() -> pd.DataFrame:
+def build_table(only_stuff: bool = False) -> pd.DataFrame:
     rng = np.random.default_rng(SEED)
     rows = []
 
@@ -193,10 +206,18 @@ def build_table() -> pd.DataFrame:
 
     print("Stuff+ (out-of-fold, every pitch)...")
     stuff = stuff_units()
-    add("StuffPlus_Scaled", "pitches", PITCH_GRID, stuff, mean_of("StuffPlus"))
+    add("StuffPlus_Scaled", "pitches", PITCH_GRID, stuff.dropna(subset=["StuffZ"]), mean_of("StuffZ"))
     for pitch_type, group in stuff.groupby("PitchType"):
         add(f"StuffPlus_Scaled[{pitch_type}]", "pitches", PITCH_GRID, group, mean_of("StuffPlus"))
     del stuff
+    if only_stuff:
+        # Stuff+ is drawn first with a fresh SEED rng, so these rows equal a full run's; keep every other row as is
+        stuff_rows = pd.DataFrame(rows)
+        old = pd.read_csv(STABILIZATION_PATH)
+        old = old[~old["metric"].str.startswith("StuffPlus_Scaled")]
+        table = pd.concat([stuff_rows, old], ignore_index=True)
+        r_cols = sorted([c for c in table if c.startswith("r_")], key=lambda c: int(c[2:]))
+        return table[["metric", "unit", "k", "pitchers_at_max_n", *r_cols]]
 
     print("Location+ / Edge% / Meatball% / BB%...")
     pitches, pa = location_units()
@@ -228,11 +249,11 @@ def print_table(table: pd.DataFrame):
           f"({N_REPEATS} random draws, qualified pitchers with 2n+ units, blank = under {MIN_PITCHERS_PER_POINT} pitchers)")
 
 
-def run():
+def run(only_stuff: bool = False):
     if SEASON != DEFAULT_SEASON:
         raise SystemExit(f"Stabilization k values are fit on {DEFAULT_SEASON} only and reused for other seasons "
                          f"(THESIS_SEASON={SEASON}); unset THESIS_SEASON to refit.")
-    table = build_table()
+    table = build_table(only_stuff)
     table.to_csv(STABILIZATION_PATH, index=False)
     print("\n── Stabilization points ──")
     print_table(table)
@@ -240,5 +261,6 @@ def run():
 
 
 if __name__ == "__main__":
-    argparse.ArgumentParser(description="Split-half stabilization points (k) for every regressed metric.").parse_args()
-    run()
+    parser = argparse.ArgumentParser(description="Split-half stabilization points (k) for every regressed metric.")
+    parser.add_argument("--only-stuff", action="store_true", help="Refit the Stuff+ rows only, keep every other row")
+    run(parser.parse_args().only_stuff)

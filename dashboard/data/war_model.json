@@ -13,7 +13,7 @@
   "InjuryRiskScore",
   "VolatilityScore_Reg"
  ],
- "reason": "R4 test RMSE 0.894624 >= R3 0.894554, so R3 (volatility + injury don't improve the rate forecast)",
+ "reason": "R4 test RMSE 0.894332 >= R3 0.893086, so R3 (volatility + injury don't improve the rate forecast)",
  "risk_in_rate_model": false,
  "risk_in_playing_time_model": true,
  "train_pair": "2023->2024",
@@ -36,12 +36,12 @@
    "VolatilityScore_Reg": -2.765871
   },
   "R3": {
-   "const": 3.874231,
-   "FIPR9_reg": 0.403597,
-   "KminusBBPct": -1.853586,
-   "StuffPlus": -0.012595,
-   "LocationPlus": 0.002189,
-   "Starter": 0.068172
+   "const": 4.3414,
+   "FIPR9_reg": 0.392078,
+   "KminusBBPct": -1.541421,
+   "StuffPlus": -0.015837,
+   "LocationPlus": 0.000841,
+   "Starter": 0.068528
   }
  }
 }

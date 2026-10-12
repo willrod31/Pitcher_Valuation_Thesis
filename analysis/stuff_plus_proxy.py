@@ -19,27 +19,50 @@ v2 (current):
   Out-of-fold AUC / log loss vs. a constant-whiff-rate baseline per pitch
   type go to data/stuff_plus_validation.csv.
 
-v1 (the original: both hands in one frame, swings only, in-sample) is kept
-as StuffPlus_v1 / StuffPlus_Scaled_v1 for comparison.
+v3 (current, on top of v2):
+- Whiff model: STUFF_MODEL, picked by analysis/stuff_plus_model_comparison.py
+  (lowest out-of-fold log loss of four model types, rule fixed in advance).
+- Pitcher grade from z-scores, not raw ratios: each pitch type is z-scored
+  within its type, the pitcher's overall z is the usage-weighted average of
+  his per-type z, then 100 + 10 z against the qualified pitchers. (Averaging
+  ratios let one extreme ratio -- Tyler Rogers' sinker at 752 -- dominate.)
+- Comparability (out-of-distribution shrinkage): for each pitch, the share
+  of its COMPARABLE_NEIGHBORS nearest neighbors among OTHER pitchers'
+  training swings (standardized features, same pitch group, the other folds)
+  that are closer than the group's COMPARABLE_DISTANCE_PCT-th percentile
+  neighbor distance. StuffComparability = its mean per pitcher x pitch type
+  (usage-weighted per pitcher), and
+      StuffPlus_Final = 100 + (StuffPlus_Scaled_Reg - 100) x StuffComparability
+  so a pitch shape the model has never seen is pulled toward average.
+
+v2 (ratio averaged across pitch types) is kept as StuffPlus_v2 /
+StuffPlus_Scaled_v2 and v1 (the original: both hands in one frame, swings
+only, in-sample) as StuffPlus_v1 / StuffPlus_Scaled_v1, for comparison.
 
 StuffPlus = predicted whiff probability / league average for the pitch type
-x 100 (ratio). StuffPlus_Scaled = 100 + 10 z vs. the league-wide qualified
-pool. StuffPlus_Scaled_Reg regresses small samples toward 100 using the
-stabilization point k from analysis/stabilization.py.
+x 100 (ratio, kept for reference only -- nothing downstream uses it).
+StuffPlus_Scaled = 100 + 10 z (above). StuffPlus_Scaled_Reg regresses small
+samples toward 100 using the stabilization point k from
+analysis/stabilization.py. StuffPlus_Final is what every downstream module
+and the dashboard use.
 """
 import argparse
+import shutil
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.metrics import log_loss, roc_auc_score
+from sklearn.ensemble import GradientBoostingClassifier, HistGradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import brier_score_loss, log_loss, roc_auc_score
 from sklearn.model_selection import GroupKFold
+from sklearn.neighbors import NearestNeighbors
+from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 from analysis.data_acquisition import END_DATE, START_DATE, pitchers_only, load_pitcher_season, load_season_monthly, load_team_roster_full_seasons, primary_team
 from analysis.stabilization import load_k, regress, reliability
-from analysis.utils import STUFF_PLUS_DIR, WRITES_DASHBOARD, scale_100
+from analysis.utils import STUFF_PLUS_DIR, WRITES_DASHBOARD, scale_100, zscore_vs
 from config import (
     MIN_PITCHES_FOR_INCLUSION, MIN_PITCHES_PER_TYPE_FOR_SCALE, MIN_PITCHES_PER_TYPE_TO_DISPLAY, MIN_PITCHES_TO_DISPLAY, SHOULDER_HEIGHT_FT,
 )
@@ -49,8 +72,13 @@ LEAGUE_PITCHES_PATH = STUFF_PLUS_DIR / "stuff_plus_league_pitches.parquet"   # e
 LEAGUE_SUMMARY_PATH = STUFF_PLUS_DIR / "stuff_plus_league_summary.parquet"   # pitcher x pitch type
 LEAGUE_PITCHER_PATH = STUFF_PLUS_DIR / "stuff_plus_league_pitcher.parquet"   # pitcher
 V1_SUMMARY_PATH = STUFF_PLUS_DIR / "stuff_plus_v1_league_summary.parquet"    # original model's scores, for StuffPlus_v1
+# v2 tables, frozen the first time v3 runs (freeze_v2), for StuffPlus_v2
+V2_SUMMARY_PATH = STUFF_PLUS_DIR / "stuff_plus_v2_league_summary.parquet"
+V2_PITCHER_PATH = STUFF_PLUS_DIR / "stuff_plus_v2_league_pitcher.parquet"
 VALIDATION_PATH = STUFF_PLUS_DIR / "stuff_plus_validation.csv"
 V1_COMPARISON_PATH = STUFF_PLUS_DIR / "stuff_plus_v1_comparison.csv"
+WHIFF_GAP_PATH = STUFF_PLUS_DIR / "whiff_gap.csv"
+COMPARABILITY_PATH = STUFF_PLUS_DIR / "comparability.csv"
 # This run's --pitcher/--team scope
 SUMMARY_PATH = STUFF_PLUS_DIR / "stuff_plus_summary.parquet"
 PITCHES_PATH = STUFF_PLUS_DIR / "stuff_plus_pitches.parquet"
@@ -112,6 +140,36 @@ MIN_PITCHES_PER_TYPE = 50      # min league swings needed to train a pitch-type 
 N_FOLDS = 5
 MIN_SAMPLE_FOR_SUMMARY_V1 = 25  # v1 only: min scored swings to keep a Pitcher/PitchType row
 
+# ── Whiff model types (compared in analysis/stuff_plus_model_comparison.py) ──
+# Chosen by that script's rule (fixed in advance): lowest overall out-of-fold log loss on 2025, and
+# within 0.001 of the best, the simpler model (MODEL_COMPLEXITY order). Other seasons reuse the choice.
+STUFF_MODEL = "B"
+MODEL_LABELS = {
+    "A": "GradientBoosting per pitch type (100 trees, depth 3)",
+    "B": "Logistic regression per pitch type (standardized + velo/IVB/HB squared)",
+    "C": "HistGradientBoosting per pitch type (tuned)",
+    "D": "HistGradientBoosting per pitch group (tuned, pitch type categorical)",
+}
+MODEL_COMPLEXITY = ["B", "A", "C", "D"]   # simplest first
+PITCH_GROUPS = {
+    "fastball": ["FF", "SI", "FC"],
+    "breaking": ["SL", "ST", "CU", "KC", "SV", "CS"],
+    "offspeed": ["CH", "FS", "FO", "SC"],
+}
+SQUARED_FEATURES = ["release_speed", "ivb", "hb"]   # model B's squared terms
+HGB_GRID = [{"max_depth": d, "max_iter": n, "learning_rate": lr}
+            for d in (3, 5) for n in (100, 300) for lr in (0.05, 0.1)]
+N_INNER_FOLDS = 3    # inner GroupKFold (training folds only) that tunes C / D
+RANDOM_STATE = 42
+
+# Comparability (out-of-distribution shrinkage)
+COMPARABLE_NEIGHBORS = 50
+COMPARABLE_DISTANCE_PCT = 95
+MAX_STUFF_FINAL = 160   # backstop: winsorize only if a qualified pitcher's overall StuffPlus_Final is outside 60-160
+MIN_STUFF_FINAL = 60
+WINSOR_PCT = (0.5, 99.5)
+MIN_SWINGS_FOR_WHIFF_GAP = 100
+
 
 def label_swings(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -137,60 +195,214 @@ def to_rhp_frame(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def new_model() -> GradientBoostingClassifier:
-    return GradientBoostingClassifier(n_estimators=100, max_depth=3, random_state=42)
+    """Model A (and v1)."""
+    return GradientBoostingClassifier(n_estimators=100, max_depth=3, random_state=RANDOM_STATE)
 
 
-# ── v2: out-of-fold, every pitch, handedness-mirrored ────────────────────────
+# ── Whiff models: shared by the production fit and the model comparison ─────
+
+def pitch_group(pitch_type: str) -> str:
+    """PITCH_GROUPS name for a pitch type (a type in no group is its own group)."""
+    return next((g for g, types in PITCH_GROUPS.items() if pitch_type in types), pitch_type)
+
+
+def prepare_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Labeled, complete-feature pitches with mirrored model features (X_<feature>), Fold and PitchGroup.
+
+    Fold: one GroupKFold(N_FOLDS) split by pitcher over the whole season, so
+    every model type (per pitch type or per group) and the comparability
+    check hold out exactly the same pitchers. Eligible = the pitch type has
+    MIN_PITCHES_PER_TYPE+ league swings and N_FOLDS+ pitchers (same rule for
+    every model type, so they're compared on the same pitches).
+    """
+    df = label_swings(df).dropna(subset=FEATURES + ["pitch_type", "p_throws"]).reset_index(drop=True)
+    mirrored = to_rhp_frame(df)
+    for f in FEATURES:
+        df[f"X_{f}"] = mirrored[f].to_numpy()
+    df["Fold"] = -1
+    for fold, (_, test_idx) in enumerate(GroupKFold(n_splits=N_FOLDS).split(df, groups=df["pitcher"])):
+        df.loc[test_idx, "Fold"] = fold
+    df["PitchGroup"] = df["pitch_type"].map(pitch_group)
+    by_type = df.groupby("pitch_type").agg(Swings=("SwingOrNot", "sum"), Pitchers=("pitcher", "nunique"))
+    eligible = by_type[(by_type["Swings"] >= MIN_PITCHES_PER_TYPE) & (by_type["Pitchers"] >= N_FOLDS)].index
+    for pitch_type, row in by_type.drop(eligible).iterrows():
+        print(f"{pitch_type}: not scored ({row['Swings']} swings, {row['Pitchers']} pitchers)")
+    df["Eligible"] = df["pitch_type"].isin(eligible)
+    return df
+
+
+X_COLUMNS = [f"X_{f}" for f in FEATURES]
+
+
+def design_matrix(rows: pd.DataFrame, model_key: str, type_codes: dict | None = None) -> np.ndarray:
+    """Model inputs: the mirrored features; B adds squared velocity / IVB / HB; D adds the pitch type code."""
+    X = rows[X_COLUMNS].to_numpy(dtype=float)
+    if model_key == "B":
+        X = np.column_stack([X, rows[[f"X_{f}" for f in SQUARED_FEATURES]].to_numpy(dtype=float) ** 2])
+    if model_key == "D":
+        X = np.column_stack([X, rows["pitch_type"].map(type_codes).to_numpy(dtype=float)])
+    return X
+
+
+def make_model(model_key: str, params: dict | None = None):
+    if model_key == "A":
+        return new_model()
+    if model_key == "B":
+        return make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000))
+    categorical = [len(FEATURES)] if model_key == "D" else None   # the pitch type code column
+    return HistGradientBoostingClassifier(early_stopping=False, random_state=RANDOM_STATE,
+                                          categorical_features=categorical, **(params or {}))
+
+
+class ConstantModel:
+    """Fallback when a training set has one class only."""
+
+    def __init__(self, rate: float):
+        self.rate = rate
+
+    def predict_proba(self, X):
+        return np.column_stack([np.full(len(X), 1 - self.rate), np.full(len(X), self.rate)])
+
+
+def tune_hgb(X: np.ndarray, y: np.ndarray, groups: np.ndarray, model_key: str) -> dict:
+    """HGB_GRID point with the lowest inner-CV log loss (GroupKFold by pitcher, training rows only)."""
+    best, best_loss = None, np.inf
+    splits = list(GroupKFold(n_splits=N_INNER_FOLDS).split(X, groups=groups))
+    for params in HGB_GRID:
+        losses = []
+        for tr, va in splits:
+            model = make_model(model_key, params).fit(X[tr], y[tr])
+            losses.append(log_loss(y[va], model.predict_proba(X[va])[:, 1], labels=[0, 1]) * len(va))
+        loss = sum(losses) / len(X)
+        if loss < best_loss:
+            best, best_loss = params, loss
+    return best
+
+
+def fit_unit(X: np.ndarray, y: np.ndarray, groups: np.ndarray, model_key: str):
+    """(fitted model, tuned params or None) on one unit's training swings."""
+    if len(np.unique(y)) < 2:
+        return ConstantModel(float(y.mean())), None
+    params = tune_hgb(X, y, groups, model_key) if model_key in ("C", "D") else None
+    return make_model(model_key, params).fit(X, y), params
+
+
+def oof_predict(df: pd.DataFrame, model_key: str, verbose: bool = True) -> tuple[pd.Series, pd.Series, list[dict]]:
+    """Out-of-fold P(whiff | swing) for every eligible pitch (swing or not), the constant-rate baseline, tuning log.
+
+    A-C: one model per pitch type; D: one model per PITCH_GROUPS group with
+    the pitch type as a categorical feature. Each fold's model is trained on
+    the OTHER folds' swings only. Baseline = the training folds' whiff rate
+    for that pitch type (a constant per type).
+    """
+    pred = pd.Series(np.nan, index=df.index)
+    baseline = pd.Series(np.nan, index=df.index)
+    log = []
+    eligible = df[df["Eligible"]]
+    unit_col = "PitchGroup" if model_key == "D" else "pitch_type"
+    for unit, rows in eligible.groupby(unit_col):
+        type_codes = {t: i for i, t in enumerate(sorted(rows["pitch_type"].unique()))}
+        X = design_matrix(rows, model_key, type_codes)
+        y = rows["Whiff"].to_numpy()
+        swing = rows["SwingOrNot"].to_numpy() == 1
+        fold = rows["Fold"].to_numpy()
+        groups = rows["pitcher"].to_numpy()
+        for k in range(N_FOLDS):
+            train = swing & (fold != k)
+            test = fold == k
+            if not test.any():
+                continue
+            model, params = fit_unit(X[train], y[train], groups[train], model_key)
+            pred.loc[rows.index[test]] = model.predict_proba(X[test])[:, 1]
+            rates = rows.loc[train].groupby("pitch_type")["Whiff"].mean()
+            baseline.loc[rows.index[test]] = rows.loc[test, "pitch_type"].map(rates).to_numpy()
+            log.append({"Model": model_key, "Unit": unit, "Fold": k, "TrainSwings": int(train.sum()), **(params or {})})
+            if verbose and params:
+                print(f"  {model_key} {unit} fold {k}: {params}")
+    return pred, baseline, log
+
+
+def validation_table(df: pd.DataFrame, pred: pd.Series, baseline: pd.Series) -> pd.DataFrame:
+    """Out-of-fold metrics on held-out swings, by pitch type plus an 'ALL' row (swing-weighted mean of the types)."""
+    swings = df[(df["SwingOrNot"] == 1) & pred.notna()]
+    rows = []
+    for pitch_type, g in swings.groupby("pitch_type"):
+        y, p, b = g["Whiff"].to_numpy(), pred[g.index].to_numpy(), baseline[g.index].to_numpy()
+        rows.append({
+            "PitchType": pitch_type, "Pitchers": g["pitcher"].nunique(), "Swings": len(g), "WhiffRate": y.mean(),
+            "AUC": roc_auc_score(y, p) if len(np.unique(y)) > 1 else np.nan,
+            "LogLoss": log_loss(y, p, labels=[0, 1]), "Brier": brier_score_loss(y, p),
+            "BaselineLogLoss": log_loss(y, b, labels=[0, 1]),
+        })
+    table = pd.DataFrame(rows)
+    w = table["Swings"]
+    overall = {"PitchType": "ALL", "Pitchers": swings["pitcher"].nunique(), "Swings": int(w.sum()),
+               "WhiffRate": swings["Whiff"].mean()}
+    for col in ["AUC", "LogLoss", "Brier", "BaselineLogLoss"]:
+        overall[col] = float(np.average(table[col], weights=w))
+    table = pd.concat([table, pd.DataFrame([overall])], ignore_index=True)
+    table["LogLossVsBaselinePct"] = 100 * (1 - table["LogLoss"] / table["BaselineLogLoss"])
+    return table
+
+
+def calibration_bins(df: pd.DataFrame, pred: pd.Series, n_bins: int = 10) -> pd.DataFrame:
+    """Predicted vs. actual whiff rate on held-out swings, in n_bins equal-count bins of predicted probability."""
+    swings = df[(df["SwingOrNot"] == 1) & pred.notna()]
+    p = pred[swings.index]
+    bins = pd.qcut(p.rank(method="first"), n_bins, labels=False) + 1
+    out = pd.DataFrame({"Bin": bins, "p": p, "Whiff": swings["Whiff"]}).groupby("Bin").agg(
+        Swings=("p", "size"), MinPred=("p", "min"), MaxPred=("p", "max"), MeanPred=("p", "mean"), ActualRate=("Whiff", "mean"))
+    out["Gap"] = out["MeanPred"] - out["ActualRate"]
+    return out.reset_index()
+
+
+def comparable_share(df: pd.DataFrame) -> pd.Series:
+    """Per eligible pitch: share of its COMPARABLE_NEIGHBORS nearest OTHER-pitcher training swings that are close.
+
+    Within each pitch group, features standardized on the group's swings.
+    The reference set for a pitch in fold k is the group's swings in the
+    other folds -- exactly the pitches that trained the model that scored
+    it, and never the pitcher's own. "Close" = nearer than the group's
+    COMPARABLE_DISTANCE_PCT-th percentile of every neighbor distance.
+    """
+    share = pd.Series(np.nan, index=df.index)
+    for group, rows in df[df["Eligible"]].groupby("PitchGroup"):
+        swing = rows["SwingOrNot"].to_numpy() == 1
+        scaler = StandardScaler().fit(rows.loc[swing, X_COLUMNS].to_numpy(dtype=float))
+        X = scaler.transform(rows[X_COLUMNS].to_numpy(dtype=float))
+        fold = rows["Fold"].to_numpy()
+        dist = np.full((len(rows), COMPARABLE_NEIGHBORS), np.nan)
+        for k in range(N_FOLDS):
+            test = fold == k
+            if not test.any():
+                continue
+            nn = NearestNeighbors(n_neighbors=COMPARABLE_NEIGHBORS).fit(X[swing & (fold != k)])
+            dist[test] = nn.kneighbors(X[test])[0]
+        threshold = np.percentile(dist, COMPARABLE_DISTANCE_PCT)
+        share.loc[rows.index] = (dist < threshold).mean(axis=1)
+        print(f"  comparability {group}: {len(rows)} pitches, {COMPARABLE_DISTANCE_PCT}th pct neighbor distance "
+              f"{threshold:.3f} SD, mean share {share.loc[rows.index].mean():.3f}")
+    return share
+
+
+# ── v3: out-of-fold, every pitch, handedness-mirrored, STUFF_MODEL ──────────
 
 def fit_and_score_oof(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Out-of-fold PredWhiffProb for every pitch, plus per-pitch-type validation.
+    """Out-of-fold PredWhiffProb (STUFF_MODEL) and ComparableShare for every eligible pitch, plus validation.
 
-    Per pitch type: folds are GroupKFold by pitcher over ALL pitches of that
-    type; each fold's model is trained on the OTHER folds' swings only, then
-    scores every pitch (swing or not) of the held-out pitchers. Validation
-    (AUC, log loss) uses the held-out swings, against a baseline that always
-    predicts the training folds' whiff rate. Pitch types with fewer than
-    MIN_PITCHES_PER_TYPE league swings, or fewer than N_FOLDS pitchers, are
-    not scored.
+    StuffPlus ratio = 100 x p / the league's average p over every pitch of
+    that type (of that group for model D, whose baseline is the group).
     """
-    df = label_swings(df).dropna(subset=FEATURES + ["pitch_type", "p_throws"])
-    X_all = to_rhp_frame(df)[FEATURES]
-    pred = pd.Series(np.nan, index=df.index)
-    validation = []
-
-    for pitch_type, group in df.groupby("pitch_type"):
-        swing = group["SwingOrNot"].to_numpy() == 1
-        n_pitchers = group["pitcher"].nunique()
-        if swing.sum() < MIN_PITCHES_PER_TYPE or n_pitchers < N_FOLDS:
-            print(f"{pitch_type}: skipped ({swing.sum()} swings, {n_pitchers} pitchers)")
-            continue
-        X = X_all.loc[group.index].to_numpy()
-        y = group["Whiff"].to_numpy()
-        type_pred = np.full(len(group), np.nan)
-        baseline = np.full(len(group), np.nan)
-        for train_idx, test_idx in GroupKFold(n_splits=N_FOLDS).split(X, groups=group["pitcher"].to_numpy()):
-            train_swings = train_idx[swing[train_idx]]
-            model = new_model().fit(X[train_swings], y[train_swings])
-            type_pred[test_idx] = model.predict_proba(X[test_idx])[:, 1]
-            baseline[test_idx] = y[train_swings].mean()
-        pred.loc[group.index] = type_pred
-
-        y_sw, p_sw, b_sw = y[swing], type_pred[swing], baseline[swing]
-        row = {
-            "PitchType": pitch_type, "Pitchers": n_pitchers, "Pitches": len(group), "Swings": int(swing.sum()),
-            "WhiffRate": y_sw.mean(), "AUC": roc_auc_score(y_sw, p_sw),
-            "LogLoss": log_loss(y_sw, p_sw), "BaselineLogLoss": log_loss(y_sw, b_sw),
-        }
-        row["LogLossImprovementPct"] = 100 * (1 - row["LogLoss"] / row["BaselineLogLoss"])
-        validation.append(row)
-        print(f"{pitch_type}: {row['Swings']} swings, OOF AUC {row['AUC']:.3f}, "
-              f"log loss {row['LogLoss']:.4f} vs baseline {row['BaselineLogLoss']:.4f}")
-
+    df = prepare_frame(df)
+    pred, baseline, _ = oof_predict(df, STUFF_MODEL)
+    validation = validation_table(df, pred, baseline)
     df["PredWhiffProb"] = pred
+    print("Comparability (nearest other-pitcher training swings)...")
+    df["ComparableShare"] = comparable_share(df)
     scored = df[df["PredWhiffProb"].notna()].copy()
-    # 100 = the league's average predicted whiff probability for that pitch type, over every pitch
-    scored["StuffPlus"] = 100 * scored["PredWhiffProb"] / scored.groupby("pitch_type")["PredWhiffProb"].transform("mean")
-    return scored, pd.DataFrame(validation)
+    by = "PitchGroup" if STUFF_MODEL == "D" else "pitch_type"
+    scored["StuffPlus"] = 100 * scored["PredWhiffProb"] / scored.groupby(by)["PredWhiffProb"].transform("mean")
+    return scored, validation
 
 
 def build_league_scores(train_df: pd.DataFrame | None = None, force_refresh: bool = False) -> pd.DataFrame:
@@ -202,16 +414,18 @@ def build_league_scores(train_df: pd.DataFrame | None = None, force_refresh: boo
     if train_df is None:
         print(f"Pulling league-wide Statcast {TRAIN_START} to {TRAIN_END} (month by month)...")
         train_df = load_season_monthly(TRAIN_START, TRAIN_END, columns=RAW_TRAIN_COLUMNS)
-    print("Fitting out-of-fold Stuff+ models (5-fold GroupKFold by pitcher, handedness-mirrored)...")
+    print(f"Fitting out-of-fold Stuff+ models ({MODEL_LABELS[STUFF_MODEL]}; {N_FOLDS}-fold GroupKFold by pitcher, "
+          f"handedness-mirrored)...")
     scored, validation = fit_and_score_oof(train_df)
     scored["PitcherTeam"] = scored["pitcher"].map(primary_team(train_df))
 
+    validation.insert(0, "Model", STUFF_MODEL)
     validation.to_csv(VALIDATION_PATH, index=False)
     print_validation(validation)
 
     out = scored.rename(columns={"pitcher": "PitcherId", "pitch_type": "PitchType", "SwingOrNot": "Swing"})[[
         "PitcherId", "Pitcher", "PitcherTeam", "PitchType", "p_throws", "Swing", "Whiff", "PredWhiffProb", "StuffPlus",
-        "release_speed", "ivb", "hb", "release_spin_rate",
+        "ComparableShare", "release_speed", "ivb", "hb", "release_spin_rate",
     ]]
     out.to_parquet(LEAGUE_PITCHES_PATH, index=False)
     return out
@@ -219,7 +433,8 @@ def build_league_scores(train_df: pd.DataFrame | None = None, force_refresh: boo
 
 def print_validation(validation: pd.DataFrame):
     print("\n── Stuff+ out-of-fold validation (held-out pitchers' swings) ──")
-    print(validation.round({"WhiffRate": 3, "AUC": 3, "LogLoss": 4, "BaselineLogLoss": 4, "LogLossImprovementPct": 1}).to_string(index=False))
+    print(validation.round({"WhiffRate": 3, "AUC": 3, "LogLoss": 4, "Brier": 4, "BaselineLogLoss": 4,
+                            "LogLossVsBaselinePct": 1}).to_string(index=False))
     print("AUC > 0.5 and LogLoss < BaselineLogLoss (a constant whiff rate) = the shape features carry signal.")
     print(f"Saved to {VALIDATION_PATH}")
 
@@ -228,7 +443,8 @@ def summarize_stuff_plus(per_pitch: pd.DataFrame) -> pd.DataFrame:
     """Collapse scored pitches to one row per Pitcher x PitcherTeam x PitchType (no minimum -- see add_regressed)."""
     return (
         per_pitch.groupby(["Pitcher", "PitcherId", "PitcherTeam", "PitchType"])
-        .agg(StuffPlus=("StuffPlus", "mean"), Pitches=("StuffPlus", "size"), Swings=("Swing", "sum"))
+        .agg(StuffPlus=("StuffPlus", "mean"), Pitches=("StuffPlus", "size"), Swings=("Swing", "sum"),
+             StuffComparability=("ComparableShare", "mean"))
         .round({"StuffPlus": 1})
         .reset_index()
         .sort_values("StuffPlus", ascending=False)
@@ -285,6 +501,67 @@ def add_scaled_stuff_plus(summary: pd.DataFrame, pitcher_level: pd.DataFrame, pi
             summary.loc[rows.index, "StuffPlus_Scaled"] = scale_100(rows["StuffPlus"], pool).round(1)
     pitcher_level = pitcher_level.copy()
     pitcher_level["StuffPlus_Scaled"] = scale_100(pitcher_level["StuffPlus"], pitcher_pool["StuffPlus"]).round(1)
+    return summary, pitcher_level
+
+
+def add_scaled_from_z(summary: pd.DataFrame, pitcher_level: pd.DataFrame, type_pool: pd.DataFrame, qualified_ids) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """v3 StuffPlus_Scaled from z-scores (the ratio StuffPlus columns are kept, for reference only).
+
+    Pitcher x pitch type: StuffZ = z of the ratio within that pitch type
+    (vs. type_pool, rows with MIN_PITCHES_PER_TYPE_FOR_SCALE+ pitches of the
+    type), StuffPlus_Scaled = 100 + 10 StuffZ. Pitcher: StuffZ = his
+    pitch-count-weighted average of his per-type StuffZ (types with no pool
+    are left out), StuffPlus_Scaled = 100 + 10 z(StuffZ) vs. the qualified
+    pitchers. StuffComparability: per type, the mean ComparableShare; per
+    pitcher, its pitch-count-weighted average over the same types as StuffZ.
+    """
+    summary = summary.copy()
+    summary["StuffZ"] = np.nan
+    for pitch_type, rows in summary.groupby("PitchType"):
+        pool = type_pool.loc[type_pool["PitchType"] == pitch_type, "StuffPlus"]
+        if len(pool) >= 2:
+            summary.loc[rows.index, "StuffZ"] = zscore_vs(rows["StuffPlus"], pool)
+    summary["StuffPlus_Scaled"] = (100 + 10 * summary["StuffZ"]).round(1)
+
+    used = summary.dropna(subset=["StuffZ"])
+    sums = used.assign(WZ=used["StuffZ"] * used["Pitches"], WC=used["StuffComparability"] * used["Pitches"]) \
+        .groupby("PitcherId")[["WZ", "WC", "Pitches"]].sum()
+    pitcher_level = pitcher_level.copy()
+    pitcher_level["StuffZ"] = pitcher_level["PitcherId"].map(sums["WZ"] / sums["Pitches"])
+    pitcher_level["StuffComparability"] = pitcher_level["PitcherId"].map(sums["WC"] / sums["Pitches"])
+    pool = pitcher_level.loc[pitcher_level["PitcherId"].isin(qualified_ids), "StuffZ"]
+    pitcher_level["StuffPlus_Scaled"] = scale_100(pitcher_level["StuffZ"], pool).round(1)
+    return summary, pitcher_level
+
+
+def add_final(summary: pd.DataFrame, pitcher_level: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """StuffPlus_Final = 100 + (StuffPlus_Scaled_Reg - 100) x StuffComparability, after the small-sample regression.
+
+    Backstop: only if a qualified pitcher's overall StuffPlus_Final is above
+    MAX_STUFF_FINAL or below MIN_STUFF_FINAL, every pitcher's overall value is
+    winsorized at the qualified pool's WINSOR_PCT percentiles (StuffCapped).
+    """
+    summary, pitcher_level = summary.copy(), pitcher_level.copy()
+    for table in (summary, pitcher_level):
+        table["StuffComparability"] = table["StuffComparability"].round(3)
+        table["StuffPlus_Final"] = (100 + (table["StuffPlus_Scaled_Reg"] - 100) * table["StuffComparability"]).round(1)
+
+    pitcher_level["StuffCapped"] = False
+    q = pitcher_level[pitcher_level["Qualified"]]
+    extreme = q[(q["StuffPlus_Final"] > MAX_STUFF_FINAL) | (q["StuffPlus_Final"] < MIN_STUFF_FINAL)]
+    if extreme.empty:
+        print(f"Backstop: no qualified pitcher's final overall Stuff+ is above {MAX_STUFF_FINAL} or below "
+              f"{MIN_STUFF_FINAL} (range {q['StuffPlus_Final'].min():.1f} to {q['StuffPlus_Final'].max():.1f}) "
+              f"-- no winsorizing")
+        return summary, pitcher_level
+    lo, hi = np.nanpercentile(q["StuffPlus_Final"], WINSOR_PCT)
+    capped = pitcher_level["StuffPlus_Final"].notna() & ~pitcher_level["StuffPlus_Final"].between(lo, hi)
+    print(f"Backstop: {len(extreme)} qualified pitcher(s) outside {MIN_STUFF_FINAL}-{MAX_STUFF_FINAL}, so overall "
+          f"StuffPlus_Final is winsorized at the qualified {WINSOR_PCT[0]}th / {WINSOR_PCT[1]}th percentiles "
+          f"({lo:.1f}, {hi:.1f}). Capped:")
+    print(pitcher_level.loc[capped, ["Pitcher", "PitcherTeam", "Qualified", "StuffPlus_Final"]].to_string(index=False))
+    pitcher_level.loc[capped, "StuffCapped"] = True
+    pitcher_level["StuffPlus_Final"] = pitcher_level["StuffPlus_Final"].clip(lo, hi).round(1)
     return summary, pitcher_level
 
 
@@ -377,13 +654,39 @@ def v1_tables(train_df: pd.DataFrame, force_refresh: bool = False) -> tuple[pd.D
 
 # ── League grading ───────────────────────────────────────────────────────────
 
+def freeze_v2():
+    """Copy the v2 league tables (ratio averaged across pitch types) to V2_*_PATH once, before v3 overwrites them."""
+    if V2_PITCHER_PATH.exists() or not LEAGUE_PITCHER_PATH.exists():
+        return
+    if "StuffPlus_Final" in pd.read_parquet(LEAGUE_PITCHER_PATH).columns:
+        print(f"{LEAGUE_PITCHER_PATH.name} is already v3 and no v2 copy exists -- StuffPlus_v2 will be blank")
+        return
+    shutil.copy(LEAGUE_SUMMARY_PATH, V2_SUMMARY_PATH)
+    shutil.copy(LEAGUE_PITCHER_PATH, V2_PITCHER_PATH)
+    print(f"Froze the v2 Stuff+ tables to {V2_SUMMARY_PATH.name} / {V2_PITCHER_PATH.name}")
+
+
+def v2_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(pitcher x type, pitcher) StuffPlus_v2 / StuffPlus_Scaled_v2 from the frozen v2 tables (blank if none)."""
+    rename = {"StuffPlus": "StuffPlus_v2", "StuffPlus_Scaled": "StuffPlus_Scaled_v2"}
+    if not V2_PITCHER_PATH.exists():
+        return (pd.DataFrame(columns=["PitcherId", "PitchType", *rename.values()]),
+                pd.DataFrame(columns=["PitcherId", *rename.values()]))
+    summary = pd.read_parquet(V2_SUMMARY_PATH).drop_duplicates(["PitcherId", "PitchType"])
+    pitcher = pd.read_parquet(V2_PITCHER_PATH).drop_duplicates("PitcherId")
+    return (summary[["PitcherId", "PitchType", "StuffPlus", "StuffPlus_Scaled"]].rename(columns=rename),
+            pitcher[["PitcherId", "StuffPlus", "StuffPlus_Scaled"]].rename(columns=rename))
+
+
 def grade_league(force_refresh: bool = False, train_df: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """League-wide (pitcher x pitch type, pitcher) Stuff+ tables, saved; plus the training frame.
 
     One row per PitcherId (traded pitchers labeled with their primary team).
     Pass `train_df` (load_season_monthly with at least RAW_TRAIN_COLUMNS) to
-    reuse a frame that's already loaded.
+    reuse a frame that's already loaded. --refresh refits the v3 model only
+    (v1 is a fixed, cached comparison; v2 is frozen).
     """
+    freeze_v2()
     if train_df is None:
         print(f"Pulling a league-wide training sample {TRAIN_START} to {TRAIN_END} (month by month)...")
         train_df = load_season_monthly(TRAIN_START, TRAIN_END, columns=RAW_TRAIN_COLUMNS)
@@ -392,43 +695,77 @@ def grade_league(force_refresh: bool = False, train_df: pd.DataFrame | None = No
     league_pitches = build_league_scores(train_df, force_refresh=force_refresh)
     summary = summarize_stuff_plus(league_pitches)
     pitcher_pool, type_pool = league_scale_pool(train_df, summary)
-    summary, pitcher = add_scaled_stuff_plus(summary, pitcher_level_stuff_plus(summary), pitcher_pool, type_pool)
+    summary, pitcher = add_scaled_from_z(summary, pitcher_level_stuff_plus(summary), type_pool, pitcher_pool["PitcherId"])
     thrown = train_df.groupby("pitcher").size()
     summary, pitcher = add_regressed(summary, pitcher, thrown)
+    summary, pitcher = add_final(summary, pitcher)
 
     if WRITES_DASHBOARD:
-        v1_type, v1_pitcher = v1_tables(train_df, force_refresh)
+        v1_type, v1_pitcher = v1_tables(train_df)
         summary = summary.merge(v1_type, on=["PitcherId", "PitchType"], how="left")
         pitcher = pitcher.merge(v1_pitcher, on="PitcherId", how="left")
     else:
         # v1 is a 2025 comparison only; other seasons skip the extra fit
         summary[["StuffPlus_v1", "StuffPlus_Scaled_v1"]] = np.nan
         pitcher[["StuffPlus_v1", "StuffPlus_Scaled_v1"]] = np.nan
+    v2_type, v2_pitcher = v2_tables()
+    summary = summary.merge(v2_type, on=["PitcherId", "PitchType"], how="left")
+    pitcher = pitcher.merge(v2_pitcher, on="PitcherId", how="left")
     pitcher["p_throws"] = pitcher["PitcherId"].map(train_df.drop_duplicates("pitcher").set_index("pitcher")["p_throws"])
 
     summary.to_parquet(LEAGUE_SUMMARY_PATH, index=False)
     pitcher.to_parquet(LEAGUE_PITCHER_PATH, index=False)
     print(f"Saved {len(summary)} pitcher x pitch type rows to {LEAGUE_SUMMARY_PATH}")
     print(f"Saved {len(pitcher)} pitcher rows ({pitcher['Qualified'].sum()} qualified) to {LEAGUE_PITCHER_PATH}")
+    print_diagnostics(summary, league_pitches)
     return summary, pitcher, train_df
 
 
-def compare_to_v1(pitcher: pd.DataFrame) -> pd.DataFrame:
-    """Correlation of v1 vs. new Stuff+ (qualified pitchers), overall / RHP / LHP, and the 10 biggest movers."""
-    q = pitcher[pitcher["Qualified"]].dropna(subset=["StuffPlus", "StuffPlus_v1"]).copy()
-    if q.empty:
-        print("No StuffPlus_v1 values (v1 is fit for the default season only) -- skipping the v1 comparison")
-        return q
-    q["ScaledChange"] = q["StuffPlus_Scaled"] - q["StuffPlus_Scaled_v1"]
-    print("\n── Stuff+ v1 vs. new (qualified pitchers) ──")
-    for label, rows in [("All", q), ("RHP", q[q["p_throws"] == "R"]), ("LHP", q[q["p_throws"] == "L"])]:
-        print(f"{label}: n = {len(rows)}, corr(StuffPlus_v1, StuffPlus) = {rows['StuffPlus_v1'].corr(rows['StuffPlus']):.3f}, "
-              f"corr(scaled) = {rows['StuffPlus_Scaled_v1'].corr(rows['StuffPlus_Scaled']):.3f}, "
-              f"mean |scaled change| = {rows['ScaledChange'].abs().mean():.1f}")
-    movers = q.reindex(q["ScaledChange"].abs().sort_values(ascending=False).index).head(10)
-    print("\n10 biggest changes in StuffPlus_Scaled:")
-    print(movers[["Pitcher", "PitcherTeam", "p_throws", "Pitches", "StuffPlus_v1", "StuffPlus",
-                  "StuffPlus_Scaled_v1", "StuffPlus_Scaled", "ScaledChange"]].round(1).to_string(index=False))
+def print_diagnostics(summary: pd.DataFrame, league_pitches: pd.DataFrame):
+    """Lowest-comparability pitch types and the predicted vs. actual whiff gap (diagnostic only: scores unchanged)."""
+    rows = summary[summary["Pitches"] >= MIN_PITCHES_PER_TYPE_FOR_SCALE].sort_values("StuffComparability")
+    rows[["Pitcher", "PitcherId", "PitcherTeam", "PitchType", "Pitches", "StuffComparability", "StuffPlus",
+          "StuffPlus_Scaled", "StuffPlus_Scaled_Reg", "StuffPlus_Final"]].to_csv(COMPARABILITY_PATH, index=False)
+    print(f"\n── 15 pitch types with the lowest comparability ({MIN_PITCHES_PER_TYPE_FOR_SCALE}+ pitches of the type) ──")
+    print(rows.head(15)[["Pitcher", "PitcherTeam", "PitchType", "Pitches", "StuffComparability", "StuffPlus",
+                         "StuffPlus_Scaled_Reg", "StuffPlus_Final"]].to_string(index=False))
+
+    swings = league_pitches[league_pitches["Swing"] == 1]
+    gap = swings.groupby(["Pitcher", "PitcherId", "PitcherTeam", "PitchType"]).agg(
+        Swings=("Whiff", "size"), PredWhiffRate=("PredWhiffProb", "mean"), ActualWhiffRate=("Whiff", "mean")).reset_index()
+    gap = gap[gap["Swings"] >= MIN_SWINGS_FOR_WHIFF_GAP]
+    gap["Gap"] = gap["PredWhiffRate"] - gap["ActualWhiffRate"]
+    gap = gap.merge(summary[["PitcherId", "PitchType", "StuffComparability"]], on=["PitcherId", "PitchType"], how="left")
+    gap = gap.reindex(gap["Gap"].abs().sort_values(ascending=False).index).round(
+        {"PredWhiffRate": 3, "ActualWhiffRate": 3, "Gap": 3})
+    gap.to_csv(WHIFF_GAP_PATH, index=False)
+    print(f"\n── Predicted vs. actual whiff rate on swings: 15 biggest gaps ({MIN_SWINGS_FOR_WHIFF_GAP}+ swings; "
+          f"Gap = predicted - actual) ──")
+    print(gap.head(15).drop(columns="PitcherId").to_string(index=False))
+    print(f"mean |gap| {gap['Gap'].abs().mean():.3f}, SD of gap {gap['Gap'].std():.3f} over {len(gap)} rows; "
+          f"saved to {WHIFF_GAP_PATH}")
+
+
+def compare_versions(pitcher: pd.DataFrame) -> pd.DataFrame:
+    """v1 and v2 vs. v3 (StuffPlus_Final) for qualified pitchers: correlations and the 10 biggest movers vs. v2."""
+    q = pitcher[pitcher["Qualified"]].copy()
+    print("\n── Stuff+ v1 / v2 vs. v3 (qualified pitchers; v3 = StuffPlus_Final) ──")
+    for old in ["v1", "v2"]:
+        rows = q.dropna(subset=[f"StuffPlus_Scaled_{old}", "StuffPlus_Final"])
+        if rows.empty:
+            print(f"{old}: no values for this season")
+            continue
+        for label, part in [("All", rows), ("RHP", rows[rows["p_throws"] == "R"]), ("LHP", rows[rows["p_throws"] == "L"])]:
+            print(f"{old} {label}: n = {len(part)}, corr(StuffPlus_Scaled_{old}, StuffPlus_Final) = "
+                  f"{part[f'StuffPlus_Scaled_{old}'].corr(part['StuffPlus_Final']):.3f}, corr(StuffPlus_Scaled_{old}, "
+                  f"StuffPlus_Scaled) = {part[f'StuffPlus_Scaled_{old}'].corr(part['StuffPlus_Scaled']):.3f}, "
+                  f"Spearman (Final) = {part[f'StuffPlus_Scaled_{old}'].corr(part['StuffPlus_Final'], method='spearman'):.3f}")
+    q["ChangeVsV2"] = q["StuffPlus_Final"] - q["StuffPlus_Scaled_v2"]
+    if q["ChangeVsV2"].notna().any():
+        movers = q.reindex(q["ChangeVsV2"].abs().sort_values(ascending=False).index).head(10)
+        print("\n10 biggest changes, v2 StuffPlus_Scaled -> v3 StuffPlus_Final:")
+        print(movers[["Pitcher", "PitcherTeam", "p_throws", "Pitches", "StuffPlus_Scaled_v1", "StuffPlus_Scaled_v2",
+                      "StuffPlus_Scaled", "StuffComparability", "StuffPlus_Final", "ChangeVsV2"]].round(2).to_string(index=False))
     q.to_csv(V1_COMPARISON_PATH, index=False)
     print(f"Saved the full comparison to {V1_COMPARISON_PATH}")
     return q
@@ -446,13 +783,16 @@ def save_for_dashboard(summary: pd.DataFrame, pitcher_level: pd.DataFrame):
     """
     overall = pitcher_level[[
         "PitcherId", "PitchesThrown", "Pitches", "Swings", "StuffPlus", "StuffPlus_Scaled", "StuffPlus_Scaled_Reg",
-        "StuffPlus_Reliability", "StuffPlus_v1", "StuffPlus_Scaled_v1",
+        "StuffPlus_Reliability", "StuffComparability", "StuffPlus_Final", "StuffPlus_v1", "StuffPlus_Scaled_v1",
+        "StuffPlus_v2", "StuffPlus_Scaled_v2",
     ]].rename(columns=lambda c: c if c in ("PitcherId", "PitchesThrown") else f"Overall{c}")
     rows = summary.merge(overall, on="PitcherId")[[
         "Pitcher", "PitcherId", "PitcherTeam", "PitchType", "Pitches", "Swings", "StuffPlus", "StuffPlus_Scaled",
-        "StuffPlus_Scaled_Reg", "StuffPlus_Reliability", "StuffPlus_v1", "StuffPlus_Scaled_v1",
+        "StuffPlus_Scaled_Reg", "StuffPlus_Reliability", "StuffComparability", "StuffPlus_Final",
+        "StuffPlus_v1", "StuffPlus_Scaled_v1", "StuffPlus_v2", "StuffPlus_Scaled_v2",
         "PitchesThrown", "OverallPitches", "OverallSwings", "OverallStuffPlus", "OverallStuffPlus_Scaled",
-        "OverallStuffPlus_Scaled_Reg", "OverallStuffPlus_Reliability", "OverallStuffPlus_v1", "OverallStuffPlus_Scaled_v1",
+        "OverallStuffPlus_Scaled_Reg", "OverallStuffPlus_Reliability", "OverallStuffComparability", "OverallStuffPlus_Final",
+        "OverallStuffPlus_v1", "OverallStuffPlus_Scaled_v1", "OverallStuffPlus_v2", "OverallStuffPlus_Scaled_v2",
     ]]
     upsert_csv(rows, DASHBOARD_PATH, keys=["PitcherId", "PitcherTeam"])
 
@@ -558,13 +898,13 @@ def run(start_date: str, end_date: str, pitcher: str | None = None, team: str | 
         raise ValueError("Pass --pitcher or --team, not both")
 
     summary, pitcher_level, train_df = grade_league(force_refresh=force_refresh)
-    compare_to_v1(pitcher_level)
+    compare_versions(pitcher_level)
     if VALIDATION_PATH.exists():
         print_validation(pd.read_csv(VALIDATION_PATH))
 
     if not (pitcher or team):
         print("\n── Top 20 qualified pitchers by Stuff+ (league-wide) ──")
-        print(pitcher_level[pitcher_level["Qualified"]].sort_values("StuffPlus_Scaled", ascending=False).head(20)
+        print(pitcher_level[pitcher_level["Qualified"]].sort_values("StuffPlus_Final", ascending=False).head(20)
               .drop(columns="PitcherId").to_string(index=False))
         return
 
@@ -604,7 +944,7 @@ def export_scope(summary: pd.DataFrame, pitcher_level: pd.DataFrame, scope_df: p
     per_pitch.to_parquet(PITCHES_PATH, index=False)
 
     print(f"\n── {title} pitching staff (graded vs. league) ──")
-    print(scope_pitcher.sort_values("StuffPlus_Scaled_Reg", ascending=False).drop(columns="PitcherId").to_string(index=False))
+    print(scope_pitcher.sort_values("StuffPlus_Final", ascending=False).drop(columns="PitcherId").to_string(index=False))
     save_for_dashboard(scope_summary, scope_pitcher)
     save_pitches_for_dashboard(per_pitch)
     save_movement_for_dashboard(scope_df)
@@ -617,6 +957,6 @@ if __name__ == "__main__":
     parser.add_argument("--end", default=END_DATE, help="End date for the --pitcher/--team pull (charts), YYYY-MM-DD")
     parser.add_argument("--pitcher", default=None, help="Also print/export one pitcher's result for the dashboard, e.g. --pitcher \"Paul Skenes\"")
     parser.add_argument("--team", default=None, help="Also print/export a whole team's pitching staff for the dashboard, e.g. --team PIT")
-    parser.add_argument("--refresh", action="store_true", help="Refit the models (out-of-fold and v1) instead of using cached scores")
+    parser.add_argument("--refresh", action="store_true", help="Refit the out-of-fold model (STUFF_MODEL) instead of using cached scores (v1 stays cached)")
     args = parser.parse_args()
     run(args.start, args.end, pitcher=args.pitcher, team=args.team, force_refresh=args.refresh)

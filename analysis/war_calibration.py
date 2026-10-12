@@ -11,7 +11,7 @@ with config.MIN_PITCHES_TO_DISPLAY+ Statcast pitches in t is a row; one who
 didn't pitch in t + 1 gets IP = 0 and WAR = 0 (that's how injury and failure
 show up), never dropped.
 
-    features (season t): StuffPlus (StuffPlus_Scaled_Reg), LocationPlus (LocationPlus_Reg),
+    features (season t): StuffPlus (StuffPlus_Final), LocationPlus (LocationPlus_Reg),
         UpsideIndex (AsymmetricUpsideIndex_Reg), VolatilityScore_Reg (within role; blank = 0,
         the qualified pool mean), InjuryRiskScore (config.INJURY_LOOKBACK_SEASONS ending t),
         Starter (GS/G >= config.STARTER_GS_SHARE), Age on July 1 of t + 1, IP,
@@ -108,9 +108,9 @@ def season_features(season: int) -> pd.DataFrame:
     volatility = pd.read_parquet(paths["volatility_discount.parquet"])[["PitcherId", "VolatilityPath", "VolatilityScore_Reg"]]
     injury = pd.read_csv(paths["injury_summary.csv"])[["PitcherId", "TotalDaysMissed", "ArmILStints"]]
 
-    df = upside[["PitcherId", "Pitcher", "PitcherTeam", "Qualified", "StuffPlus_Scaled_Reg", "LocationPlus_Reg",
+    df = upside[["PitcherId", "Pitcher", "PitcherTeam", "Qualified", "StuffPlus_Final", "LocationPlus_Reg",
                  "AsymmetricUpsideIndex_Reg", "simple_projected_war"]].rename(columns={
-        "PitcherTeam": "Team", "StuffPlus_Scaled_Reg": "StuffPlus", "LocationPlus_Reg": "LocationPlus",
+        "PitcherTeam": "Team", "StuffPlus_Final": "StuffPlus", "LocationPlus_Reg": "LocationPlus",
         "AsymmetricUpsideIndex_Reg": "UpsideIndex", "simple_projected_war": "LegacyProjectedWAR"})
     df = df.merge(volatility, on="PitcherId", how="left").merge(injury, on="PitcherId", how="left")
     df["VolatilityScore_Reg"] = df["VolatilityScore_Reg"].fillna(0.0)   # no path: qualified pool mean

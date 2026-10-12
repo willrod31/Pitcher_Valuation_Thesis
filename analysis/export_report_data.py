@@ -24,7 +24,8 @@ Column contract:
     SurplusPerControlYear_M, AsymmetricUpsideIndex, PitchMixInefficient,
     MostUsedPitch, BestPitch,
     Qualified, Pitches, PA, Appearances, StuffPlus_v1, StuffPlus_Scaled_v1,
-    StuffPlus_Scaled_Reg, StuffPlus_Reliability, LocationPlus_Reg, LocationPlus_Reliability,
+    StuffPlus_v2, StuffPlus_Scaled_v2, StuffPlus_Scaled_Reg, StuffPlus_Reliability,
+    StuffComparability, StuffPlus_Final, LocationPlus_Reg, LocationPlus_Reliability,
     EdgePct_Reg, MeatballPct_Reg, BBPct_Reg, BBPct_Reliability, CommandProxyLegacy_Reg,
     VolatilityScore, VolatilityScore_Reg, VolatilityReliability, VolatilityPercentile_Reg,
     AsymmetricUpsideIndex_Reg, SalarySource, ContractEstimated, ContractValued, ValueNote,
@@ -39,11 +40,11 @@ the dashboard stays season-agnostic (it labels them from config.SEASON).
 MultiYearSurplus_M starts the season after config.SEASON; blank with
 FreeAgentAfterSeason = True when no control is left.
 
-ContractEstimated = on the default contract (not in salaries.csv, not
+ContractEstimated = on the default contract (not in the salaries file, not
 pre-arb: league minimum, 1 year, FA); the dashboard tags it "est. contract".
 ContractValued = False for config.TWO_WAY_EXCLUDE_VALUE (no surplus values;
 ValueNote says so). team_paid_2025.csv: what each team paid a pitcher it
-shared (salaries.csv TeamPaid2025), one row per pitcher x team.
+shared (the salaries file's TeamPaid<SEASON>, exported as TeamPaid), one row per pitcher x team.
 
 Dashboard minimum (apply_dashboard_minimum, run last): pitchers with fewer
 than config.MIN_PITCHES_DASHBOARD total 2025 pitches (all teams, so a traded
@@ -82,7 +83,7 @@ DASHBOARD_FILES = [
 ]
 # the metrics the dashboard shows per pitcher: (file, column)
 SHOWN_METRICS = [
-    (stuff_plus_proxy.DASHBOARD_PATH, "OverallStuffPlus_Scaled_Reg"),
+    (stuff_plus_proxy.DASHBOARD_PATH, "OverallStuffPlus_Final"),
     (OUT_PATH, "LocationPlus_Reg"), (OUT_PATH, "AsymmetricUpsideIndex_Reg"),
     (OUT_PATH, "VolatilityScore_Reg"), (OUT_PATH, "RiskAdjWAR"),
 ]
@@ -96,7 +97,8 @@ COLUMN_CONTRACT = [
     "SurplusPerControlYear_M", "AsymmetricUpsideIndex", "PitchMixInefficient",
     "MostUsedPitch", "BestPitch",
     "Qualified", "Pitches", "PA", "Appearances", "StuffPlus_v1", "StuffPlus_Scaled_v1",
-    "StuffPlus_Scaled_Reg", "StuffPlus_Reliability", "LocationPlus_Reg", "LocationPlus_Reliability",
+    "StuffPlus_v2", "StuffPlus_Scaled_v2", "StuffPlus_Scaled_Reg", "StuffPlus_Reliability",
+    "StuffComparability", "StuffPlus_Final", "LocationPlus_Reg", "LocationPlus_Reliability",
     "EdgePct_Reg", "MeatballPct_Reg", "BBPct_Reg", "BBPct_Reliability", "CommandProxyLegacy_Reg",
     "VolatilityScore", "VolatilityScore_Reg", "VolatilityReliability", "VolatilityPercentile_Reg",
     "AsymmetricUpsideIndex_Reg", "SalarySource", "ContractEstimated", "ContractValued", "ValueNote",
@@ -152,8 +154,12 @@ def run():
         "Appearances": df["Appearances"],
         "StuffPlus_v1": df["StuffPlus_v1"].round(1),
         "StuffPlus_Scaled_v1": df["StuffPlus_Scaled_v1"].round(1),
+        "StuffPlus_v2": df["StuffPlus_v2"].round(1),
+        "StuffPlus_Scaled_v2": df["StuffPlus_Scaled_v2"].round(1),
         "StuffPlus_Scaled_Reg": df["StuffPlus_Scaled_Reg"].round(1),
         "StuffPlus_Reliability": df["StuffPlus_Reliability"].round(3),
+        "StuffComparability": df["StuffComparability"].round(3),
+        "StuffPlus_Final": df["StuffPlus_Final"].round(1),
         "LocationPlus_Reg": df["LocationPlus_Reg"].round(1),
         "LocationPlus_Reliability": df["LocationPlus_Reliability"].round(3),
         "EdgePct_Reg": df["EdgePct_Reg"].round(3),
@@ -242,7 +248,7 @@ def apply_dashboard_minimum() -> pd.DataFrame:
         if not broken.empty:
             print(broken[["Team", "Pitcher", "PitcherId", "Pitches2025"]].to_string(index=False))
 
-    # keep only pitchers shown on some team (catches ids no roster has, e.g. salaries.csv pitchers with no 2025 pitches)
+    # keep only pitchers shown on some team (catches ids no roster has, e.g. salaries-file pitchers with no 2025 pitches)
     shown_ids = set(roster["PitcherId"]) - drop_ids
     for path in DASHBOARD_FILES + [MISSING_REPORT_PATH]:
         if not path.exists():

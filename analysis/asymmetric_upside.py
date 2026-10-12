@@ -27,7 +27,9 @@ compared to the league, not to the rest of the Pirates staff.
 Small samples: every pitcher with config.MIN_PITCHES_TO_DISPLAY+ pitches gets
 a row (Qualified = False under config.MIN_PITCHES_FOR_INCLUSION). Edge%,
 Meatball% and BB% get *_Reg columns regressed toward the qualified pool's mean
-(analysis/stabilization.py); Stuff+ and Location+ come in already regressed.
+(analysis/stabilization.py); Stuff+ and Location+ come in already regressed
+(Stuff+ as StuffPlus_Final: regressed, then shrunk toward 100 by its
+comparability -- see stuff_plus_proxy.py).
 Every z-score uses the QUALIFIED pool's mean and SD, so small samples don't
 move anyone else's grade. AsymmetricUpsideIndex uses raw values,
 AsymmetricUpsideIndex_Reg the regressed ones; config.USE_REGRESSED picks
@@ -52,7 +54,8 @@ if COMMAND_METRIC not in ("location_plus", "legacy"):
 COMMAND_COLUMN = "LocationPlus" if COMMAND_METRIC == "location_plus" else "CommandProxyLegacy"
 # Raw or regressed (config.USE_REGRESSED) -- what risk_adjusted_value.py / the dashboard read.
 REG = "_Reg" if USE_REGRESSED else ""
-STUFF_COLUMN_USED = "StuffPlus_Scaled" + REG
+# Stuff+: StuffPlus_Final = regressed AND shrunk by comparability (stuff_plus_proxy.add_final)
+STUFF_COLUMN_USED = "StuffPlus_Final" if USE_REGRESSED else "StuffPlus_Scaled"
 COMMAND_COLUMN_USED = COMMAND_COLUMN + REG
 UPSIDE_COLUMN_USED = "AsymmetricUpsideIndex" + REG
 
@@ -126,9 +129,10 @@ def compute_command_proxy(df: pd.DataFrame, qualified_ids) -> pd.DataFrame:
 def compute_pitch_mix(df: pd.DataFrame, stuff_summary: pd.DataFrame) -> pd.DataFrame:
     """Best-performing pitch (by Stuff+) vs. most-thrown pitch, per pitcher.
 
-    Best pitch candidates need MIN_SAMPLE_FOR_SUMMARY_V1 (25) scored swings,
-    the same bar as before small samples were kept, so a 15-pitch pitch
-    type can't be "best" by noise.
+    Best = the highest per-type StuffPlus_Final (z within the pitch type,
+    regressed and shrunk by comparability -- not the raw ratio). Candidates
+    need MIN_SAMPLE_FOR_SUMMARY_V1 (25) scored swings, the same bar as before
+    small samples were kept, so a 15-pitch pitch type can't be "best" by noise.
     """
     usage = (
         df.groupby(["pitcher", "pitch_type"]).size()
@@ -138,8 +142,8 @@ def compute_pitch_mix(df: pd.DataFrame, stuff_summary: pd.DataFrame) -> pd.DataF
     most_used = usage.loc[usage.groupby("PitcherId")["Thrown"].idxmax()][["PitcherId", "pitch_type"]]
     most_used = most_used.rename(columns={"pitch_type": "MostUsedPitch"})
 
-    candidates = stuff_summary[stuff_summary["Swings"] >= MIN_SAMPLE_FOR_SUMMARY_V1]
-    best = candidates.loc[candidates.groupby("PitcherId")["StuffPlus"].idxmax()][["PitcherId", "PitchType"]]
+    candidates = stuff_summary[stuff_summary["Swings"] >= MIN_SAMPLE_FOR_SUMMARY_V1].dropna(subset=["StuffPlus_Final"])
+    best = candidates.loc[candidates.groupby("PitcherId")["StuffPlus_Final"].idxmax()][["PitcherId", "PitchType"]]
     best = best.rename(columns={"PitchType": "BestPitch"})
 
     mix = most_used.merge(best, on="PitcherId", how="inner")
@@ -172,7 +176,8 @@ def grade_league(force_refresh: bool = False, df: pd.DataFrame | None = None) ->
     mix = compute_pitch_mix(df, stuff_summary)
 
     stuff_cols = ["PitcherId", "Pitcher", "PitcherTeam", "p_throws", "StuffPlus", "StuffPlus_Scaled", "StuffPlus_Scaled_Reg",
-                  "StuffPlus_Reliability", "StuffPlus_v1", "StuffPlus_Scaled_v1"]
+                  "StuffPlus_Reliability", "StuffComparability", "StuffPlus_Final", "StuffPlus_v1", "StuffPlus_Scaled_v1",
+                  "StuffPlus_v2", "StuffPlus_Scaled_v2"]
     command_cols = ["PitcherId", "Pitches", "PA", "EdgePct", "MeatballPct", "BBPct", "CommandProxy",
                     "EdgePct_Reg", "MeatballPct_Reg", "BBPct_Reg", "CommandProxy_Reg",
                     "EdgePct_Reliability", "MeatballPct_Reliability", "BBPct_Reliability"]
@@ -189,7 +194,7 @@ def grade_league(force_refresh: bool = False, df: pd.DataFrame | None = None) ->
     pool = out[out["Qualified"]]
     out["AsymmetricUpsideIndex"] = (zscore_vs(out["StuffPlus_Scaled"], pool["StuffPlus_Scaled"])
                                     - zscore_vs(out[COMMAND_COLUMN], pool[COMMAND_COLUMN]))
-    out["AsymmetricUpsideIndex_Reg"] = (zscore_vs(out["StuffPlus_Scaled_Reg"], pool["StuffPlus_Scaled"])
+    out["AsymmetricUpsideIndex_Reg"] = (zscore_vs(out["StuffPlus_Final"], pool["StuffPlus_Scaled"])
                                         - zscore_vs(out[COMMAND_COLUMN + "_Reg"], pool[COMMAND_COLUMN]))
     out = out.sort_values(UPSIDE_COLUMN_USED, ascending=False)
 
@@ -202,7 +207,7 @@ def grade_league(force_refresh: bool = False, df: pd.DataFrame | None = None) ->
 def show(out: pd.DataFrame, team: str | None = None):
     """Print a team's pitchers (or the league top 20), graded vs. the league."""
     shown = filter_to_team(out, team) if team else out[out["Qualified"]].head(20)
-    cols = ["Pitcher", "PitcherTeam", "Qualified", "Pitches", "StuffPlus_Scaled", "StuffPlus_Scaled_Reg", COMMAND_COLUMN,
+    cols = ["Pitcher", "PitcherTeam", "Qualified", "Pitches", "StuffPlus_Scaled", "StuffPlus_Final", COMMAND_COLUMN,
             COMMAND_COLUMN + "_Reg", "AsymmetricUpsideIndex", "AsymmetricUpsideIndex_Reg", "MostUsedPitch", "BestPitch"]
     print(f"\n── Asymmetric Upside = z(Stuff+) - z({COMMAND_COLUMN}), sorted by {UPSIDE_COLUMN_USED} "
           f"({team + ', graded vs. league' if team else 'top 20 qualified league-wide'}) ──")

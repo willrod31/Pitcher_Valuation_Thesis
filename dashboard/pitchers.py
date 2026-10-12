@@ -26,7 +26,7 @@ SURPLUS_BY_YEAR_PATH = DATA_DIR / "surplus_by_year.csv"     # from analysis/expo
 VELOCITY_PATH = DATA_DIR / "velocity_by_game.csv"           # from analysis/stuff_plus_proxy.py --team/--pitcher
 INJURY_STINTS_PATH = DATA_DIR / "injury_stints.csv"         # from analysis/export_report_data.py
 TEAM_PAID_PATH = DATA_DIR / "team_paid_2025.csv"           # from analysis/export_report_data.py
-EST_CONTRACT_TAG = "est. contract"   # default contract: not in salaries.csv, league minimum, 1 yr
+EST_CONTRACT_TAG = "est. contract"   # default contract: not in the salaries file, league minimum, 1 yr
 NEXT_SEASON = SEASON + 1             # projected WAR and surplus start here
 # Value labels (cards, board columns and their hover help share these)
 PROJ_WAR_LABEL = f"Projected {NEXT_SEASON} WAR"
@@ -120,7 +120,7 @@ def load_report_data(data_version: float):
 
 @st.cache_data
 def load_team_paid(data_version: float) -> pd.DataFrame:
-    """What each team paid a pitcher it shared (salaries.csv TeamPaid2025), one row per pitcher x team."""
+    """What each team paid a pitcher it shared (the salaries file's TeamPaid), one row per pitcher x team."""
     return pd.read_csv(TEAM_PAID_PATH) if TEAM_PAID_PATH.exists() else pd.DataFrame()
 
 
@@ -260,7 +260,7 @@ def movement_chart(pitches: pd.DataFrame, stuff_rows: pd.DataFrame | None = None
     pitches["hb_arm"] = np.where(pitches["p_throws"] == "R", -pitches["hb"], pitches["hb"])
     counts = pitches["PitchType"].value_counts()
     total = len(pitches)
-    stuff = per_type(stuff_rows, ["StuffPlus_Scaled_Reg"])["StuffPlus_Scaled_Reg"]
+    stuff = per_type(stuff_rows, ["StuffPlus_Final"])["StuffPlus_Final"]
     location = per_type(location_rows, ["LocationPlus_Reg"])["LocationPlus_Reg"]
     stuff_rel = per_type(stuff_rows, ["StuffPlus_Reliability"])["StuffPlus_Reliability"]
 
@@ -427,7 +427,7 @@ ARSENAL_HELP = {
     "Usage": "Share of his pitches that were this pitch.",
     "Stuff+": "Pitch shape quality vs. the league's pitches of the same type, where 100 = league average and 10 points = 1 standard deviation.",
     "Location+": "Command of this pitch vs. the league's pitches of the same type, where 100 = league average and higher is better.",
-    "Stuff+ raw": "Stuff+ before it is pulled toward 100 for sample size.",
+    "Stuff+ raw": "Stuff+ before it is pulled toward 100 for sample size and for unusual pitch shapes the model has few comparable pitches for.",
     "Location+ raw": "Location+ before it is pulled toward 100 for sample size.",
     "Sample": STAT_HELP["Sample"],
 }
@@ -469,7 +469,7 @@ def stuff_location_bar_chart(stuff_rows: pd.DataFrame, location_rows: pd.DataFra
     average, blue = worse), faded toward gray by its reliability; the
     solid/hatched pattern tells the two apart. * = small sample.
     """
-    stuff = per_type(stuff_rows, ["StuffPlus_Scaled_Reg", "StuffPlus_Scaled", "Pitches", "StuffPlus_Reliability"])
+    stuff = per_type(stuff_rows, ["StuffPlus_Final", "StuffPlus_Scaled", "Pitches", "StuffPlus_Reliability"])
     location = per_type(location_rows, ["LocationPlus_Reg", "LocationPlus", "Pitches", "LocationPlus_Reliability"])
     types = [p for p in types if p in stuff.index or p in location.index]
 
@@ -497,7 +497,7 @@ def stuff_location_bar_chart(stuff_rows: pd.DataFrame, location_rows: pd.DataFra
             marker=dict(color=BASELINE_COLOR, pattern=dict(shape=pattern, fgcolor="rgba(255,255,255,0.8)", size=6, fillmode="overlay")),
         ))
     fig.add_hline(y=100, line_dash="dash", line_color=BASELINE_COLOR)  # axis title carries "100 = league avg"
-    top = np.nanmax(list(stuff["StuffPlus_Scaled_Reg"]) + list(location["LocationPlus_Reg"]) + [100])
+    top = np.nanmax(list(stuff["StuffPlus_Final"]) + list(location["LocationPlus_Reg"]) + [100])
     fig.update_yaxes(range=[0, top * 1.15])
     fig.update_layout(
         barmode="group",
@@ -638,7 +638,7 @@ with tab_report:
 
         # (label, metric key in colors.METRIC_DIRECTION, regressed value, raw value, n, unit, reliability, formatter)
         grade_cards = [
-            ("Stuff+", "StuffPlus_Scaled_Reg", value_of(stuff_overall, "OverallStuffPlus_Scaled_Reg"),
+            ("Stuff+", "StuffPlus_Scaled_Reg", value_of(stuff_overall, "OverallStuffPlus_Final"),
              value_of(stuff_overall, "OverallStuffPlus_Scaled"), value_of(stuff_overall, "OverallPitches"), "pitches",
              value_of(stuff_overall, "OverallStuffPlus_Reliability"), "{:.0f}"),
             ("Location+", "LocationPlus_Reg", value_of(location_overall, "OverallLocationPlus_Reg"),
@@ -695,7 +695,7 @@ with tab_report:
                 + (f"Contract: {report_row['ValueNote']}. " if not contract_valued(report_row) else
                    f"Contract: {report_row['ContractStatus']}, {report_row['RemainingControl']:.0f} year(s) of control left "
                    f"from {NEXT_SEASON} ({report_row['ControlSource']})"
-                   + (f", {EST_CONTRACT_TAG}: not in salaries.csv, valued at the league minimum. " if contract_estimated(report_row) else ". "))
+                   + (f", {EST_CONTRACT_TAG}: not in the salaries file, valued at the league minimum. " if contract_estimated(report_row) else ". "))
                 + f"Projected WAR is fitted on real 2023-2025 FIP-WAR and held flat across the control years (see README)."
             )
             if pd.notna(report_row.get("MostUsedPitch")) and pd.notna(report_row.get("BestPitch")):
@@ -703,8 +703,8 @@ with tab_report:
                            + (" (pitch mix flag: his best pitch is not his most used)" if report_row.get("PitchMixInefficient") is True else ""))
             paid = team_paid[(team_paid["PitcherId"] == pitcher_id) & (team_paid["Team"] == team_choice)] \
                 if not team_paid.empty else pd.DataFrame()
-            if not paid.empty and pd.notna(paid["TeamPaid2025"].iloc[0]):
-                st.caption(f"{team_choice} paid ${paid['TeamPaid2025'].iloc[0] / 1e6:.2f}M of his "
+            if not paid.empty and pd.notna(paid["TeamPaid"].iloc[0]):
+                st.caption(f"{team_choice} paid ${paid['TeamPaid'].iloc[0] / 1e6:.2f}M of his "
                            f"${paid['ListedSalary'].iloc[0] / 1e6:.2f}M 2025 salary (traded midseason); "
                            "he is valued at the full contract.")
 
@@ -768,9 +768,9 @@ with tab_report:
                 Pitches=("ivb", "size"), Velo=("release_speed", "mean"), IVB=("ivb", "mean"), HB=("hb_arm", "mean"),
             )
             arsenal["Usage"] = arsenal["Pitches"] / arsenal["Pitches"].sum()
-            stuff_types = per_type(pitcher_summary, ["StuffPlus_Scaled_Reg", "StuffPlus_Scaled", "StuffPlus_Reliability"])
+            stuff_types = per_type(pitcher_summary, ["StuffPlus_Final", "StuffPlus_Scaled", "StuffPlus_Reliability"])
             location_types = per_type(pitcher_location_rows, ["LocationPlus_Reg", "LocationPlus", "LocationPlus_Reliability"])
-            arsenal["Stuff+"] = stuff_types["StuffPlus_Scaled_Reg"]
+            arsenal["Stuff+"] = stuff_types["StuffPlus_Final"]
             arsenal["Location+"] = location_types["LocationPlus_Reg"]
             arsenal["Stuff+ raw"] = stuff_types["StuffPlus_Scaled"]
             arsenal["Location+ raw"] = location_types["LocationPlus"]
@@ -800,7 +800,8 @@ with tab_report:
                 column_config={col: st.column_config.Column(help=text) for col, text in ARSENAL_HELP.items()},
             )
             st.caption("Stuff+ and Location+ compare each pitch to the league's pitches of that type, regressed toward "
-                       "100 by sample size (raw columns unregressed; faded color = less reliable). " + SCALE_CAPTION)
+                       "100 by sample size (raw columns unregressed; faded color = less reliable). Stuff+ is also pulled "
+                       "toward 100 for a pitch shape with few comparable pitches in the league. " + SCALE_CAPTION)
 
 
 # Tab 2: team view, ranked by multi-year surplus
@@ -825,7 +826,7 @@ with tab_board:
         team_ids = (
             team_stuff
             .drop_duplicates("PitcherId")
-            .rename(columns={"OverallStuffPlus_Scaled_Reg": "StuffScaled", "OverallStuffPlus_Reliability": "StuffReliability"})
+            .rename(columns={"OverallStuffPlus_Final": "StuffScaled", "OverallStuffPlus_Reliability": "StuffReliability"})
             [["PitcherId", "Pitcher", "PitchesThrown", "StuffScaled", "StuffReliability"]]
         )
         if location_plus is not None:
@@ -887,7 +888,7 @@ with tab_board:
             column_config={col: st.column_config.Column(help=text) for col, text in BOARD_HELP.items()},
         )
         st.caption("Stuff+ / Location+ are regressed toward 100 by sample size; faded color = less reliable. "
-                   f"Contract: \"{EST_CONTRACT_TAG}\" = not in salaries.csv, valued at the league minimum for 1 year; "
+                   f"Contract: \"{EST_CONTRACT_TAG}\" = not in the salaries file, valued at the league minimum for 1 year; "
                    "two-way players' contracts are not valued. "
                    f"\"Free agent after {SEASON}\" = no control years left, so no surplus is shown (not counted as zero).")
         ungraded = team_table["RiskAdjWAR"].isna().sum()

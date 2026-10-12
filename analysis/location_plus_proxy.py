@@ -305,7 +305,9 @@ def reliability_test(scored: pd.DataFrame) -> pd.DataFrame:
     from analysis.stuff_plus_proxy import LEAGUE_PITCHER_PATH
     stuff = None
     if LEAGUE_PITCHER_PATH.exists():
-        stuff = pd.read_parquet(LEAGUE_PITCHER_PATH).set_index("PitcherId")["StuffPlus"]
+        stuff_table = pd.read_parquet(LEAGUE_PITCHER_PATH).set_index("PitcherId")
+        # StuffPlus_Final (v3); a table from before v3 only has the ratio StuffPlus
+        stuff = stuff_table["StuffPlus_Final" if "StuffPlus_Final" in stuff_table else "StuffPlus"]
     else:
         print(f"No {LEAGUE_PITCHER_PATH.name} yet -- run python -m analysis.stuff_plus_proxy for the Stuff+ correlations")
 
