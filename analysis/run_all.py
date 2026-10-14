@@ -21,7 +21,9 @@ only -- Location+, volatility, injury history (config.INJURY_LOOKBACK_SEASONS
 ending that season), Stuff+ and asymmetric upside, each season training its
 own out-of-fold Stuff+ / Location+ models and reusing the default season's
 stabilization k values. Output goes to data/results/season_<YYYY>/; no
-contracts, no surplus, and nothing is written to dashboard/data/.
+contracts, no surplus. The only dashboard/data/ files it writes are the two
+team-level ones (dashboard/data/<YYYY>/team_records.csv, team_staff.csv) the
+League page's pooled Teams view reads.
 
 Per team, the modules run in the usual order: injury_history,
 contract_status, stuff_plus_proxy, location_plus_proxy, asymmetric_upside,
@@ -72,7 +74,7 @@ import pandas as pd
 from config import CALIBRATION_SEASONS, DEFAULT_SEASON, END_DATE, MIN_PITCHES_TO_DISPLAY, SEASON, START_DATE, WAR_MODEL
 from analysis import (
     asymmetric_upside, contract_status, export_report_data, fip_war, injury_history, location_plus_proxy,
-    risk_adjusted_value, stuff_plus_proxy, volatility_discount, war_calibration,
+    risk_adjusted_value, stuff_plus_proxy, team_records, volatility_discount, war_calibration,
 )
 from analysis.data_acquisition import (
     PITCHER_POSITION_CODES, fetch_positions, load_season_monthly, seed_team_caches_from_league, team_roster_ids,
@@ -275,6 +277,7 @@ def run(teams: list[str]):
     print("\n── 5. Dashboard export + missing-contract report ──")
     # current_team.csv first, so export_report_data's dashboard minimum filters it like every other file
     runner.step("league", "current team", export_report_data.save_current_team, league)
+    runner.step("league", "team_records", team_records.run, [SEASON])   # export_report_data's team_staff.csv needs the IP splits
     runner.step("league", "export_report_data", export_report_data.run)
     pitches_by_id = league.groupby("pitcher").size()
     league = league_pitches = None   # free memory before the report
@@ -337,6 +340,12 @@ def run_season():
         stuff = runner.step(scope, "stuff_plus_proxy", stuff_plus_proxy.grade_league, train_df=league)
         if stuff is not None and location is not None:
             runner.step(scope, "asymmetric_upside", asymmetric_upside.grade_league, df=league)
+    league = None
+    # team-level files only (team_records.csv, team_staff.csv in dashboard/data/<YYYY>/) for the League page's pooled
+    # Teams view; the season itself still isn't selectable on the dashboard (dashboard/season.py SEASONS)
+    runner.step(scope, "fip_war", fip_war.run, [SEASON])
+    runner.step(scope, "team_records", team_records.run, [SEASON])
+    runner.step(scope, "team_staff", export_report_data.export_team_staff, SEASON)
 
     print(f"\nLog: {LOG_DIR}/run_{scope}.txt")
     for scope_name, name, err in runner.failures:

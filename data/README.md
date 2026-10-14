@@ -21,7 +21,9 @@ data/
 │       ├── mlb_debut_dates.json  # debut date per id (contract_status.py)
 │       ├── mlb_season_dates.json # opening day / last day per season (injury_history.py)
 │       ├── transactions/         # transactions_<id>_<years>.json (injury_history.py)
-│       └── gamelogs/             # gamelog_<id>_<season>.json (injury_history.py)
+│       ├── gamelogs/             # gamelog_<id>_<season>.json (injury_history.py)
+│       ├── standings/            # standings_<season>.json, teams_<season>.json (team_records.py)
+│       └── team_splits/          # pitching_<id>_<season>.json: a traded pitcher's per-team lines (team_records.py)
 └── results/                      # module outputs (rebuilt by each run)
     ├── stuff_plus/               # league scores (slow cached step), summaries, validation, v1 comparison
     ├── location_plus/            # league scores (slow cached step), summaries, command_reliability.csv
@@ -32,7 +34,9 @@ data/
     ├── injury_stints.csv / injury_summary.csv
     ├── contract_status_est.csv
     ├── risk_adjusted_value.parquet
-    └── surplus_by_year.csv
+    ├── surplus_by_year.csv
+    ├── team_records.csv          # W-L, runs, Pythagorean wins, 2023-2026 (team_records.py)
+    └── team_analysis*.csv        # staff metrics vs. runs allowed / run diff / wins (team_analysis.py)
 ```
 
 The slow caches are `raw/statcast/league/` (network) and the two league score files in

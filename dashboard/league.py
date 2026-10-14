@@ -11,10 +11,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(1, str(Path(__file__).parent.parent))
 from colors import (  # noqa: E402  (dashboard-local helper module)
     BAD_COLOR, GOOD_COLOR, NEUTRAL_COLOR, NEUTRAL_TEXT_LIGHT, LeaguePools, colored_numbers, is_small_sample, legend_html,
+    stat_color,
 )
 from pitch_types import pitch_name  # noqa: E402
 from config import MIN_PITCHES_DASHBOARD, MIN_PITCHES_FOR_INCLUSION  # noqa: E402
-from season import data_dir, data_version, selected_season  # noqa: E402
+from season import DATA_ROOT, data_dir, data_version, selected_season  # noqa: E402
 
 SEASON = selected_season()
 NEXT_SEASON = SEASON + 1
@@ -293,9 +294,9 @@ def open_report(pitcher_id: int):
     st.switch_page("pitchers.py")
 
 
-tabs = st.tabs(["Starters", "Relievers"])
+tabs = st.tabs(["Starters", "Relievers", "Teams"])
 st.session_state.setdefault("league_plot_reset", 0)
-for tab, role in zip(tabs, ["starter", "reliever"]):
+for tab, role in zip(tabs[:2], ["starter", "reliever"]):
     with tab:
         st.caption(f"Role is based on {SEASON} usage (starter = started half his games or more). Stuff+ and Location+ "
                    "are graded against all qualified MLB pitchers, not just pitchers in the same role.")
@@ -350,3 +351,197 @@ for tab, role in zip(tabs, ["starter", "reliever"]):
             j2.markdown("&nbsp;")
             if j2.button("Open Pitcher Report", key=f"league_open_{role}"):
                 open_report(int(options["PitcherId"].iloc[labels.index(choice)]))
+
+
+# ── Teams tab: each staff averaged / totaled vs. how the team did ────────────
+# team_staff.csv (analysis/export_report_data.build_team_staff) + team_records.csv (analysis/team_records.py)
+STAFF_GROUP_LABELS = {"All pitchers": "all", "Starters": "starter", "Relievers": "reliever"}
+SEASON_COLORS = {2023: "#eda100", 2024: "#1baf7a", 2025: "#eb6834", 2026: "#2a78d6"}   # validated categorical slots 1-4
+SEASON_SYMBOLS = {2023: "diamond", 2024: "square", 2025: "triangle-up", 2026: "circle"}
+SINGLE_COLOR = "#2a78d6"
+PAYROLL = "Pitching payroll ($M)"
+STAFF_WAR = f"Staff {SEASON} FIP-WAR"
+STAFF_PROJ = f"Staff proj. {NEXT_SEASON} WAR"
+# display column -> (team_staff column, higher is better; None = not colored)
+TEAM_COLUMNS = {
+    "Stuff+": ("StuffPlus", True), "Location+": ("LocationPlus", True), "Upside Index": ("UpsideIndex", True),
+    "Volatility percentile": ("VolatilityPct", False), "Injury risk": ("InjuryRisk", False),
+    STAFF_WAR: ("FIPWAR", True), STAFF_PROJ: ("ProjWAR", True), PAYROLL: ("Payroll_M", None),
+    SURPLUS: ("Surplus_M", True), "Upside-target pitch %": ("UpsidePitchShare", None),
+}
+TEAM_HELP = {
+    "Team": "Team code.", "W-L": f"{SEASON} regular-season record (MLB Stats API).",
+    "Run diff": "Runs scored minus runs allowed.", "Runs allowed": "Runs the team allowed (lower is better).",
+    "Pitchers": "Pitchers who threw a pitch for the team (position players not counted).",
+    "Stuff+": "Staff Stuff+: every pitcher's Stuff+ weighted by the pitches he threw for this team.",
+    "Location+": "Staff Location+, weighted by pitches thrown for this team.",
+    "Upside Index": "Staff Upside Index (Stuff+ minus Location+ in SDs), weighted by pitches thrown for this team.",
+    "Volatility percentile": "Staff outing-to-outing volatility, weighted by pitches (lower = steadier).",
+    "Injury risk": "Staff injury risk, 0 to 1, weighted by pitches.",
+    STAFF_WAR: f"Sum of the staff's {SEASON} FIP-WAR; a traded pitcher's WAR is split by his innings for each team.",
+    STAFF_PROJ: f"Sum of projected {NEXT_SEASON} WAR, a traded pitcher split by his pitch share.",
+    PAYROLL: f"{SEASON} pitching payroll: salaries file (what this team paid when it only paid part), "
+             "plus the league-minimum estimate for pitchers not in the file. Two-way players not counted.",
+    SURPLUS: f"Sum of multi-year surplus from {NEXT_SEASON} (free agents and two-way players left out), split by pitch share.",
+    "Upside-target pitch %": "Share of the team's pitches thrown by pitchers with Upside Index 1.0 or higher.",
+}
+TEAM_FORMATS = {"Run diff": "{:+.0f}", "Runs allowed": "{:.0f}", "Stuff+": "{:.1f}", "Location+": "{:.1f}",
+                "Upside Index": "{:+.2f}", "Volatility percentile": "{:.0f}", "Injury risk": "{:.2f}",
+                STAFF_WAR: "{:.1f}", STAFF_PROJ: "{:.1f}", PAYROLL: "{:.1f}", SURPLUS: "{:.1f}",
+                "Upside-target pitch %": "{:.0%}", "Stuff+ (unweighted)": "{:.1f}", "Location+ (unweighted)": "{:.1f}",
+                "Upside Index (unweighted)": "{:+.2f}", "Volatility percentile (unweighted)": "{:.0f}",
+                "Injury risk (unweighted)": "{:.2f}"}
+# chart axes: label -> (column, value format)
+X_OPTIONS = {"Staff Stuff+": ("StuffPlus", ".1f"), "Staff Location+": ("LocationPlus", ".1f"),
+             "Staff Upside Index": ("UpsideIndex", "+.2f"), "Staff volatility percentile": ("VolatilityPct", ".0f"),
+             "Staff FIP-WAR": ("FIPWAR", ".1f"), PAYROLL: ("Payroll_M", ".1f")}
+Y_OPTIONS = {"Runs allowed": ("RunsAllowed", ".0f"), "Wins": ("Wins", ".0f"), "Run diff": ("RunDiff", "+.0f")}
+TEAM_CAPTION = ("Wins also depend on offense and defense; runs allowed is the cleaner comparison for pitching. "
+                "With 30 teams, correlations are noisy.")
+
+
+@st.cache_data
+def load_team_season(data_version: float, season: int) -> pd.DataFrame | None:
+    """team_staff.csv joined to team_records.csv for one season, every group; None if either file is missing."""
+    folder = DATA_ROOT / str(season)
+    staff_path, records_path = folder / "team_staff.csv", folder / "team_records.csv"
+    if not (staff_path.exists() and records_path.exists()):
+        return None
+    return pd.read_csv(staff_path).merge(pd.read_csv(records_path), on=["Season", "Team"], how="inner")
+
+
+def team_seasons_available() -> list[int]:
+    return sorted(int(p.name) for p in DATA_ROOT.iterdir() if p.is_dir() and p.name.isdigit()
+                  and (p / "team_staff.csv").exists() and (p / "team_records.csv").exists())
+
+
+def team_table(rows: pd.DataFrame, unweighted: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(display table, cell colors): values colored against the 30 teams, each followed by its 1-30 rank."""
+    shown = pd.DataFrame({"Team": rows["Team"].to_numpy(),
+                          "W-L": [f"{w}-{l}" for w, l in zip(rows["Wins"], rows["Losses"])],
+                          "Run diff": rows["RunDiff"].to_numpy(), "Runs allowed": rows["RunsAllowed"].to_numpy(),
+                          "Pitchers": rows["Pitchers"].to_numpy()})
+    colors = pd.DataFrame(None, index=shown.index, columns=shown.columns, dtype=object)
+    neutral = NEUTRAL_COLOR if is_dark_theme() else NEUTRAL_TEXT_LIGHT
+
+    def color(values, higher_is_better):
+        values = pd.Series(values, dtype=float)
+        if higher_is_better is None or values.notna().sum() < 2:
+            return [None] * len(values)
+        return [stat_color(v, values.mean(), values.std(), higher_is_better, neutral) for v in values]
+
+    colors["Run diff"] = color(shown["Run diff"], True)
+    colors["Runs allowed"] = color(shown["Runs allowed"], False)
+    for label, (col, better) in TEAM_COLUMNS.items():
+        shown[label] = rows[col].to_numpy()
+        colors[label] = color(shown[label], better)
+        if f"{col}_Rank" in rows:
+            shown[f"{label} rank"] = rows[f"{col}_Rank"].astype("Int64").to_numpy()
+        if unweighted and f"{col}_Unweighted" in rows:
+            shown[f"{label} (unweighted)"] = rows[f"{col}_Unweighted"].to_numpy()
+    return shown, colors.reindex(columns=shown.columns)
+
+
+def fit_line(x: pd.Series, y: pd.Series) -> tuple[np.ndarray, np.ndarray, float]:
+    slope, intercept = np.polyfit(x, y, 1)
+    xs = np.linspace(x.min(), x.max(), 50)
+    return xs, slope * xs + intercept, float(np.corrcoef(x, y)[0, 1])
+
+
+def team_scatter(data: pd.DataFrame, x_label: str, y_label: str, pooled: bool, height: int = 520) -> go.Figure:
+    """One dot per team (per team-season when pooled), team labels, OLS trend line with r / r2 / n."""
+    axes = X_OPTIONS | Y_OPTIONS
+    (x_col, x_fmt), (y_col, y_fmt) = axes[x_label], axes[y_label]
+    data = data.dropna(subset=[x_col, y_col])
+    fig = go.Figure()
+    if data.empty:
+        return fig
+    hover = (f"<b>%{{customdata[0]}}</b> %{{customdata[1]}}<br>{x_label}: %{{x:{x_fmt}}}<br>{y_label}: %{{y:{y_fmt}}}"
+             "<br>W-L: %{customdata[2]}<br>Best pitcher (FIP-WAR): %{customdata[3]}<extra></extra>")
+    groups = data.groupby("Season") if pooled else [(None, data)]
+    for season, g in groups:
+        custom = np.column_stack([g["Team"], g["Season"].astype(str) if pooled else [""] * len(g),
+                                  [f"{w}-{l}" for w, l in zip(g["Wins"], g["Losses"])],
+                                  [f"{p} ({v:.1f})" if isinstance(p, str) else "n/a"
+                                   for p, v in zip(g["BestPitcher"], g["BestPitcherWAR"])]])
+        fig.add_trace(go.Scatter(
+            x=g[x_col], y=g[y_col], mode="markers+text", text=g["Team"], textposition="top center",
+            textfont=dict(size=9 if pooled else 10), customdata=custom, hovertemplate=hover,
+            name=str(season) if pooled else "Teams", showlegend=pooled,
+            marker=dict(size=9 if pooled else 11, color=SEASON_COLORS.get(season, SINGLE_COLOR) if pooled else SINGLE_COLOR,
+                        symbol=SEASON_SYMBOLS.get(season, "circle") if pooled else "circle",
+                        line=dict(width=1, color="rgba(255,255,255,0.8)")),
+        ))
+    xs, ys, r = fit_line(data[x_col].astype(float), data[y_col].astype(float))
+    fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color=BASELINE_COLOR, width=2, dash="dash"),
+                             name="Trend", hoverinfo="skip", showlegend=False))
+    fig.add_annotation(xref="paper", yref="paper", x=0.01, y=0.99, xanchor="left", yanchor="top", showarrow=False,
+                       align="left", text=f"r = {r:+.2f}, r² = {r * r:.2f}, n = {len(data)}",
+                       font=dict(size=13), bgcolor="rgba(127,127,127,0.12)")
+    better_up = " (better is up)" if y_col == "RunsAllowed" else ""
+    fig.update_layout(
+        xaxis=dict(title=x_label), yaxis=dict(title=y_label + better_up, autorange="reversed" if y_col == "RunsAllowed" else True),
+        legend=dict(orientation="h", y=1.08, x=0, title_text="Season"), margin=dict(t=40, l=10, r=10, b=10), height=height,
+    )
+    return fig
+
+
+def teams_view():
+    staff = load_team_season(data_version(SEASON), SEASON)
+    if staff is None:
+        st.info(f"No team files for {SEASON} yet (dashboard/data/{SEASON}/team_staff.csv and team_records.csv: "
+                "run python -m analysis.team_records and python -m analysis.export_report_data --team-staff "
+                f"{SEASON}).")
+        return
+    st.caption("Each team's pitching staff averaged and totaled, next to how the team did. A traded pitcher counts for "
+               "each team in proportion to the pitches (innings, for FIP-WAR) he threw for it. The sidebar's pitcher "
+               "filters don't apply here.")
+    c1, c2 = st.columns([2, 1])
+    group_label = c1.radio("Staff", list(STAFF_GROUP_LABELS), horizontal=True, key="league_team_group")
+    unweighted = c2.checkbox("Show unweighted averages", key="league_team_unweighted",
+                             help="Plain mean over the staff's pitchers (each pitcher counts once), for comparison "
+                                  "with the pitch-weighted averages.")
+    group = STAFF_GROUP_LABELS[group_label]
+    rows = staff[staff["Group"] == group].sort_values("RunsAllowed").reset_index(drop=True)
+
+    shown, colors = team_table(rows, unweighted)
+    st.dataframe(colored_numbers(shown, colors, TEAM_FORMATS), hide_index=True, width="stretch",
+                 column_config={c: st.column_config.Column(help=TEAM_HELP.get(c.removesuffix(" rank").removesuffix(" (unweighted)"),
+                                                                             "Rank among the 30 teams: 1 = highest, except "
+                                                                             "volatility and injury risk (1 = lowest)."
+                                                                             if c.endswith(" rank") else None))
+                                for c in shown.columns})
+    st.download_button("Download CSV", shown.to_csv(index=False).encode(), mime="text/csv", key="league_team_csv",
+                       file_name=f"league_{SEASON}_teams_{group}.csv")
+    coverage = rows["WeightCoverage"].min()
+    st.caption(f"Sorted by runs allowed (fewest first). Colors compare the 30 teams with each other. Weights are "
+               f"{SEASON} Statcast pitches from April 1 on (late-March games aren't in the pull); pitchers under "
+               f"{MIN_PITCHES_DASHBOARD} pitches have no grades, so at least {coverage:.0%} of each staff's pitches "
+               "carry a value.")
+
+    st.markdown("**Staff vs. results**")
+    available = team_seasons_available()
+    pooled = st.toggle("Pool all seasons", key="league_team_pooled",
+                       help=f"Every team-season with team files: {', '.join(map(str, available))}. "
+                            "Payroll exists only for seasons with a salaries file.")
+    if pooled:
+        frames = [load_team_season(data_version(s), s) for s in available]
+        data = pd.concat([f for f in frames if f is not None], ignore_index=True)
+        data = data[data["Group"] == group]
+    else:
+        data = rows
+    a, b = st.columns(2)
+    x_label = a.selectbox("x-axis", list(X_OPTIONS), key="league_team_x")
+    y_label = b.selectbox("y-axis", list(Y_OPTIONS), key="league_team_y")
+    st.plotly_chart(team_scatter(data, x_label, y_label, pooled), width="stretch", key="league_team_scatter")
+    st.caption(TEAM_CAPTION + (" Pooled seasons aren't adjusted for each season's run environment." if pooled else ""))
+
+    st.markdown("**Wins per payroll: pitching payroll vs. staff FIP-WAR**")
+    st.plotly_chart(team_scatter(data, PAYROLL, "Staff FIP-WAR", pooled, height=480), width="stretch",
+                    key="league_team_payroll")
+    st.caption("Up and to the left = cheap, productive staffs (the low-payroll angle of the thesis). "
+               "Seasons with no salaries file have no payroll and aren't plotted.")
+
+
+with tabs[2]:
+    teams_view()

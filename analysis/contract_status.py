@@ -160,7 +160,7 @@ def report_duplicate_conflicts(raw: pd.DataFrame, file_name: str = SALARIES_PATH
 FANGRAPHS_TO_STATCAST = {"ARI": "AZ"}
 
 
-def load_team_paid() -> pd.DataFrame:
+def load_team_paid(season: int = SEASON) -> pd.DataFrame:
     """One row per salaries-file pitcher x team: PitcherId, Team (Statcast code), ListedSalary, TeamPaid.
 
     TeamPaid (TeamPaid<SEASON> in the file) is what that team actually paid
@@ -168,7 +168,7 @@ def load_team_paid() -> pd.DataFrame:
     Salary). Kept separate from load_salaries(), which keeps one row per
     pitcher for valuation.
     """
-    raw = read_salaries_file()
+    raw = read_salaries_file(season=season)
     if raw is None:
         return pd.DataFrame(columns=["PitcherId", "Team", "ListedSalary", TEAM_PAID_COLUMN])
     ids = pd.to_numeric(raw["PitcherId"], errors="coerce")

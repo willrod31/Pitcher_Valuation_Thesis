@@ -34,7 +34,8 @@ WAR_CALIBRATION_DIR = BASE_RESULTS_DIR / "war_calibration"
 SEASON_STATS_DIR = MLB_API_DIR / "season_stats"
 # dashboard/data/<SEASON>/: each dashboard season's exports (same file names every season).
 # DEFAULT_SEASON always writes there; another season only with THESIS_DASHBOARD=1
-# (python -m analysis.run_all --season 2026 --dashboard). League-only seasons (2023, 2024) never do.
+# (python -m analysis.run_all --season 2026 --dashboard). League-only seasons (2023, 2024) write only the
+# team-level team_records.csv / team_staff.csv there (team_records.py, export_report_data.export_team_staff).
 DASHBOARD_ROOT = Path(__file__).resolve().parent.parent / "dashboard" / "data"
 DASHBOARD_DATA_DIR = DASHBOARD_ROOT / str(SEASON)
 WRITES_DASHBOARD = SEASON == DEFAULT_SEASON or os.environ.get("THESIS_DASHBOARD") == "1"

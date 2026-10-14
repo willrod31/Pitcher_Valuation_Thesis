@@ -2,7 +2,8 @@ import os
 
 # The season every module grades. 2025 is the default; set THESIS_SEASON=2023 (or
 # python -m analysis.run_all --season 2023) to grade another season without editing this file.
-# Non-default seasons write to data/results/season_<YYYY>/ and never touch dashboard/data/.
+# Non-default seasons write to data/results/season_<YYYY>/ and, in dashboard/data/<YYYY>/, only the two
+# team-level files (team_records.csv, team_staff.csv) the League page's pooled Teams view reads.
 DEFAULT_SEASON = 2025
 SEASON = int(os.environ.get("THESIS_SEASON", DEFAULT_SEASON))
 START_DATE = f"{SEASON}-04-01"
