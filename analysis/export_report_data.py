@@ -35,7 +35,14 @@ Column contract:
 RiskAdjWAR = projected WAR for the season after config.SEASON (config.WAR_MODEL,
 see risk_adjusted_value.py); ProjectedRole/IP/FIPR9 are its parts. ActualWAR /
 ActualIP = config.SEASON's FIP-WAR (risk_adjusted_value's ActualWAR<SEASON>) and
-SurplusActual_M = ActualWAR x $/WAR - salary, a look-back. Names carry no year so
+SurplusActual_M = ActualWAR x $/WAR - salary, a look-back.
+Past seasons only (config.PAIR_MODEL_FOR_SEASON) add ActualNextWAR / ActualNextIP:
+what the pitcher actually did the season after (0 with no MLB line), next to
+the out-of-sample RiskAdjWAR; their folder also gets war_model.json (the
+single-pair model that made the projection, war_calibration.pair_model) and
+stabilization.csv (the 2025 k values every season reuses), and their per-pitch
+files are shrunk (shrink_pitch_files: fewer columns, rounding). 2025 and 2026
+keep their hand-exported copies of those two files and their full pitch files. Names carry no year so
 the dashboard stays season-agnostic (it labels them from config.SEASON).
 MultiYearSurplus_M starts the season after config.SEASON; blank with
 FreeAgentAfterSeason = True when no control is left.
@@ -78,20 +85,24 @@ pitcher keep config.MIN_PITCHES_PER_TYPE_TO_DISPLAY. The grading pool, league
 means, stabilization and everything in data/results/ are untouched.
 """
 import argparse
+import json
+import shutil
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from config import DEFAULT_SEASON, DROP_ALL_NA_PITCHERS, MIN_PITCHES_DASHBOARD, SEASON, TWO_WAY_EXCLUDE_VALUE
+from config import DEFAULT_SEASON, DROP_ALL_NA_PITCHERS, MIN_PITCHES_DASHBOARD, PAIR_MODEL_FOR_SEASON, SEASON, TWO_WAY_EXCLUDE_VALUE
 from analysis import location_plus_proxy, stuff_plus_proxy
 from analysis.contract_status import TEAM_PAID_COLUMN, load_team_paid
 from analysis.data_acquisition import _month_chunks, fetch_statcast, non_pitcher_ids, pitchers_only
 from analysis.fip_war import load_fip_war
 from analysis.injury_history import STINTS_PATH
 from analysis.risk_adjusted_value import (
-    ACTUAL_WAR_COL, OUT_PATH as RISK_ADJUSTED_PATH, SURPLUS_ACTUAL_COL, SURPLUS_BY_YEAR_PATH, injury_risk_score,
+    ACTUAL_NEXT_IP_COL, ACTUAL_NEXT_WAR_COL, ACTUAL_WAR_COL, OUT_PATH as RISK_ADJUSTED_PATH, SURPLUS_ACTUAL_COL,
+    SURPLUS_BY_YEAR_PATH, injury_risk_score,
 )
+from analysis.stabilization import STABILIZATION_PATH
 from analysis.team_records import pitcher_team_ip, team_code
 from analysis.utils import DASHBOARD_DATA_DIR, DASHBOARD_ROOT, STATCAST_LEAGUE_DIR, WRITES_DASHBOARD, season_results_dir
 
@@ -102,6 +113,8 @@ STINTS_OUT_PATH = DASHBOARD_DATA / "injury_stints.csv"
 TEAM_PAID_OUT_PATH = DASHBOARD_DATA / f"team_paid_{SEASON}.csv"
 # PitcherId, CurrentTeam: the team of each pitcher's last appearance (the League page lists a traded pitcher once, there)
 CURRENT_TEAM_OUT_PATH = DASHBOARD_DATA / "current_team.csv"
+WAR_MODEL_OUT_PATH = DASHBOARD_DATA / "war_model.json"          # past seasons: the single-pair model's coefficients
+STABILIZATION_OUT_PATH = DASHBOARD_DATA / "stabilization.csv"   # past seasons: copy of the reused 2025 k values
 # 2025 keeps its original name; other dashboard seasons get their own file
 MISSING_REPORT_PATH = Path(__file__).resolve().parent.parent / "data" / (
     "missing_contract_report.csv" if SEASON == DEFAULT_SEASON else f"missing_contract_report_{SEASON}.csv")
@@ -228,6 +241,9 @@ def run():
         "FreeAgentAfterSeason": df["FreeAgentAfterSeason"],
         "WARModel": df["WARModel"],
     })[COLUMN_CONTRACT]
+    if ACTUAL_NEXT_WAR_COL in df:   # past seasons: what actually happened the season after the projection
+        out["ActualNextWAR"] = df[ACTUAL_NEXT_WAR_COL].round(2).to_numpy()
+        out["ActualNextIP"] = df[ACTUAL_NEXT_IP_COL].round(1).to_numpy()
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(OUT_PATH, index=False)
@@ -249,6 +265,37 @@ def run():
 
     apply_dashboard_minimum()
     export_team_staff(SEASON)
+    if SEASON in PAIR_MODEL_FOR_SEASON:
+        export_model_files()
+        shrink_pitch_files()
+
+
+# Past seasons only (config.PAIR_MODEL_FOR_SEASON): smaller per-pitch files. The dashboard draws the movement chart
+# from movement_pitches.csv.gz (1 decimal is finer than the chart can show) and only falls back to
+# stuff_plus_pitches.csv.gz when there is no movement file, so that one keeps PitcherId / PitchType / StuffPlus.
+PAST_PITCH_FILES = {
+    stuff_plus_proxy.DASHBOARD_PITCHES_PATH: (["PitcherId", "PitchType", "StuffPlus"], {"StuffPlus": 0}),
+    stuff_plus_proxy.MOVEMENT_PITCHES_PATH: (stuff_plus_proxy.MOVEMENT_COLUMNS,
+                                             {"release_speed": 1, "ivb": 1, "hb": 1, "arm_angle": 1}),
+}
+
+
+def shrink_pitch_files():
+    for path, (columns, digits) in PAST_PITCH_FILES.items():
+        if not path.exists():
+            continue
+        before = path.stat().st_size
+        rows = pd.read_csv(path)[columns].round(digits)
+        rows.to_csv(path, index=False)
+        print(f"  {path.name}: {before / 1e6:.1f}MB -> {path.stat().st_size / 1e6:.1f}MB ({', '.join(columns)}; rounded {digits})")
+
+
+def export_model_files():
+    """war_model.json (the single-pair model that projected SEASON + 1) and stabilization.csv, for the Home page."""
+    from analysis.war_calibration import pair_model   # imported here: war_calibration imports risk_adjusted_value
+    WAR_MODEL_OUT_PATH.write_text(json.dumps(pair_model(SEASON), indent=1))
+    shutil.copyfile(STABILIZATION_PATH, STABILIZATION_OUT_PATH)
+    print(f"Saved {WAR_MODEL_OUT_PATH} and {STABILIZATION_OUT_PATH}")
 
 
 def save_current_team(league: pd.DataFrame) -> pd.DataFrame:

@@ -15,6 +15,12 @@ inferred from a salaries file existing, so a league-only season can never
 write dashboard files by accident. A season after config.CALIBRATION_SEASONS
 gets its FIP-WAR and a projection from config.FROZEN_WAR_MODEL
 (war_calibration.project_frozen) -- the calibration is not rerun or refit.
+A past season (config.PAIR_MODEL_FOR_SEASON: 2022-2024) is display only: its
+FIP-WAR and next season's (the known answer), then an OUT-OF-SAMPLE projection
+from the single-pair model that never saw the next season
+(war_calibration.project_pair_model); again nothing is fit. With no
+data/salaries_<YYYY>.csv, no contract is valued and the missing-contract
+report is skipped (risk_adjusted_value.no_contracts).
 
 --season (any season but config.DEFAULT_SEASON) runs the league-wide metrics
 only -- Location+, volatility, injury history (config.INJURY_LOOKBACK_SEASONS
@@ -71,7 +77,9 @@ for _n, _arg in enumerate(sys.argv):
 import numpy as np
 import pandas as pd
 
-from config import CALIBRATION_SEASONS, DEFAULT_SEASON, END_DATE, MIN_PITCHES_TO_DISPLAY, SEASON, START_DATE, WAR_MODEL
+from config import (
+    CALIBRATION_SEASONS, DEFAULT_SEASON, END_DATE, MIN_PITCHES_TO_DISPLAY, PAIR_MODEL_FOR_SEASON, SEASON, START_DATE, WAR_MODEL,
+)
 from analysis import (
     asymmetric_upside, contract_status, export_report_data, fip_war, injury_history, location_plus_proxy,
     risk_adjusted_value, stuff_plus_proxy, team_records, volatility_discount, war_calibration,
@@ -248,7 +256,11 @@ def run(teams: list[str]):
     volatility = runner.step("league", "volatility_discount", volatility_discount.grade_league)
     if volatility is not None:
         runner.step("league", "volatility regressions", volatility_discount.run_regressions, volatility[1])
-    if WAR_MODEL == "calibrated" and SEASON in CALIBRATION_SEASONS:
+    if WAR_MODEL == "calibrated" and SEASON in PAIR_MODEL_FOR_SEASON:
+        # past season, display only: this and next season's FIP-WAR, then the single-pair model that never saw SEASON + 1
+        runner.step("league", "fip_war", fip_war.ensure, [SEASON, SEASON + 1])
+        runner.step("league", "war_calibration (pair)", war_calibration.project_pair_model, SEASON)
+    elif WAR_MODEL == "calibrated" and SEASON in CALIBRATION_SEASONS:
         # needs data/results/season_<YYYY>/ for the earlier calibration seasons (run_all --season <YYYY>)
         runner.step("league", "fip_war", fip_war.run)
         runner.step("league", "war_calibration", war_calibration.run)
@@ -281,7 +293,11 @@ def run(teams: list[str]):
     runner.step("league", "export_report_data", export_report_data.run)
     pitches_by_id = league.groupby("pitcher").size()
     league = league_pitches = None   # free memory before the report
-    result = runner.step("league", "missing contract report", build_missing_report, pitches_by_id)
+    if contract_status.load_salaries() is None:
+        print(f"\nNo {contract_status.SALARIES_PATH.name}: no contracts valued, so no missing-contract report")
+        result = None
+    else:
+        result = runner.step("league", "missing contract report", build_missing_report, pitches_by_id)
     excluded = excluded_non_pitchers(teams)
     print(f"\n── {excluded['PitcherId'].nunique()} non-pitcher(s) excluded (primary position not P or two-way) ──")
     print(excluded.to_string(index=False) if not excluded.empty else "none")
@@ -343,7 +359,7 @@ def run_season():
     league = None
     # team-level files only (team_records.csv, team_staff.csv in dashboard/data/<YYYY>/) for the League page's pooled
     # Teams view; the season itself still isn't selectable on the dashboard (dashboard/season.py SEASONS)
-    runner.step(scope, "fip_war", fip_war.run, [SEASON])
+    runner.step(scope, "fip_war", fip_war.ensure, [SEASON])
     runner.step(scope, "team_records", team_records.run, [SEASON])
     runner.step(scope, "team_staff", export_report_data.export_team_staff, SEASON)
 

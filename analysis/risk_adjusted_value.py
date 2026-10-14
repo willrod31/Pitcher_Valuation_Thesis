@@ -25,6 +25,18 @@ ActualWAR<SEASON> is the pitcher's real FIP-WAR that season (analysis/fip_war.py
 and SurplusActual<SEASON> = ActualWAR x that season's $/WAR - that season's salary,
 a look-back number only.
 
+Past seasons (config.PAIR_MODEL_FOR_SEASON: 2022-2024) are display only. Their
+next-season projection comes from the single-pair model that never saw the
+next season (war_calibration.project_pair_model), and since that season has
+been played, ActualWAR<SEASON + 1> / ActualIP<SEASON + 1> hold what actually
+happened (0 for a pitcher with no MLB line that season, as in the calibration).
+2025 is left without it: 2026 is the frozen test (backtest_2026_spec.md).
+
+No salaries file for the season (data/salaries_<SEASON>.csv): no contract is
+valued at all -- Salary, surplus and control stay blank, ContractValued =
+False and ValueNote = "No <SEASON> contract data". A whole season is never
+filled with league-minimum defaults.
+
 Contracts come from the hand-collected data/salaries_<SEASON>.csv (joined on
 PitcherId). Blank ContractStatus / YearsControl / PreArbYearsLeft /
 ArbYearsLeft fall back to contract_status.py's debut-date estimate; blank
@@ -77,6 +89,7 @@ from config import (
     MAX_CONTROL_YEARS,
     REPLACEMENT_LEVEL_WAR,
     MIN_PITCHES_TO_DISPLAY,
+    PAIR_MODEL_FOR_SEASON,
     SEASON,
     TWO_WAY_EXCLUDE_VALUE,
     USE_REGRESSED,
@@ -100,12 +113,21 @@ FIRST_VALUE_SEASON = SEASON + 1   # surplus starts here: the first season an acq
 PROJECTIONS_PATH = WAR_CALIBRATION_DIR / f"projections_{FIRST_VALUE_SEASON}.csv"
 # seasons after the calibration seasons are projected by the frozen model, so its metadata says which model carries risk
 USES_FROZEN_MODEL = SEASON > max(CALIBRATION_SEASONS)
+# past seasons (display only) are projected out of sample by a single-pair model (war_calibration.pair_model)
+USES_PAIR_MODEL = SEASON in PAIR_MODEL_FOR_SEASON
 CHOSEN_MODEL_PATH = (Path(__file__).resolve().parent.parent / FROZEN_WAR_MODEL if USES_FROZEN_MODEL
+                     else WAR_CALIBRATION_DIR / "pair_models.json" if USES_PAIR_MODEL
                      else WAR_CALIBRATION_DIR / "chosen_model.json")
 ACTUAL_WAR_PATH = WAR_CALIBRATION_DIR / f"fip_war_{SEASON}.csv"
 ACTUAL_WAR_COL = f"ActualWAR{SEASON}"
 SURPLUS_ACTUAL_COL = f"SurplusActual{SEASON}"
+# what actually happened the season after (past seasons only: the out-of-sample projections' answers)
+ACTUAL_NEXT_WAR_PATH = WAR_CALIBRATION_DIR / f"fip_war_{FIRST_VALUE_SEASON}.csv"
+ACTUAL_NEXT_WAR_COL = f"ActualWAR{FIRST_VALUE_SEASON}"
+ACTUAL_NEXT_IP_COL = f"ActualIP{FIRST_VALUE_SEASON}"
 FREE_AGENT_NOTE = f"Free agent after {SEASON}: no control value"
+NO_CONTRACT_NOTE = f"No {SEASON} contract data"
+SALARY_SOURCE_NONE = "no salaries file"
 SURPLUS_BY_YEAR_PATH = RESULTS_DIR / "surplus_by_year.csv"
 
 CONTRACT_FIELDS = ["ContractStatus", "YearsControl", "PreArbYearsLeft", "ArbYearsLeft"]
@@ -167,6 +189,8 @@ def risk_shrinkage_used() -> tuple[float, float, str]:
         return VOLATILITY_SHRINKAGE, INJURY_SHRINKAGE, (
             f"WAR model: legacy placeholder, hand-set shrinkage (volatility {VOLATILITY_SHRINKAGE}, injury {INJURY_SHRINKAGE})")
     meta = json.loads(CHOSEN_MODEL_PATH.read_text())
+    if USES_PAIR_MODEL:
+        meta = meta["pairs"][f"{PAIR_MODEL_FOR_SEASON[SEASON]}->{PAIR_MODEL_FOR_SEASON[SEASON] + 1}"]
     carriers = [name for name, used in [(f"rate model {meta['chosen_rate_model']}", meta["risk_in_rate_model"]),
                                         ("playing-time model", meta["risk_in_playing_time_model"])] if used]
     if carriers:
@@ -227,6 +251,33 @@ def add_actual_war(merged: pd.DataFrame) -> pd.DataFrame:
     merged = merged.copy()
     merged[ACTUAL_WAR_COL] = merged["PitcherId"].map(actual["WAR"])
     merged[f"ActualIP{SEASON}"] = merged["PitcherId"].map(actual["IP"])
+    return merged
+
+
+def add_actual_next_war(merged: pd.DataFrame) -> pd.DataFrame:
+    """ActualWAR<SEASON + 1> / ActualIP<SEASON + 1> for a past season (USES_PAIR_MODEL); 0 if he had no MLB line."""
+    if not USES_PAIR_MODEL:
+        return merged
+    if not ACTUAL_NEXT_WAR_PATH.exists():
+        raise FileNotFoundError(f"{ACTUAL_NEXT_WAR_PATH} not found -- run python -m analysis.fip_war --season {FIRST_VALUE_SEASON}")
+    actual = pd.read_csv(ACTUAL_NEXT_WAR_PATH).set_index("PitcherId")
+    merged = merged.copy()
+    merged[ACTUAL_NEXT_WAR_COL] = merged["PitcherId"].map(actual["WAR"]).fillna(0.0)
+    merged[ACTUAL_NEXT_IP_COL] = merged["PitcherId"].map(actual["IP"]).fillna(0.0)
+    return merged
+
+
+def no_contracts(merged: pd.DataFrame) -> pd.DataFrame:
+    """No salaries file for SEASON: every contract and surplus field blank, ValueNote = NO_CONTRACT_NOTE (no defaults)."""
+    merged = merged.copy()
+    for col in ["Salary", "AAV", "GuaranteedFuture", "ContractStatus", "YearsControl", "PreArbYearsLeft", "ArbYearsLeft",
+                "ContractStatus_est", "EstYearsControl", "RemainingControl", "MultiYearSurplus", "ControlYearsUsed",
+                "SurplusPerControlYear", SURPLUS_ACTUAL_COL]:
+        merged[col] = np.nan
+    merged["ControlSource"] = SALARY_SOURCE_NONE
+    merged["SalarySource"] = SALARY_SOURCE_NONE
+    merged[["InSalariesCsv", "StatusMismatch", "ContractEstimated", "ContractValued", "FreeAgentAfterSeason"]] = False
+    merged["ValueNote"] = NO_CONTRACT_NOTE
     return merged
 
 
@@ -431,7 +482,7 @@ def report_flags(scope: pd.DataFrame):
     if not no_salary.empty:
         print(f"\n{len(no_salary)} pitcher(s) with no Salary (no salaries file row, no debut date) -- no surplus computed:")
         print(no_salary[["Pitcher", "ContractStatus"]].to_string(index=False))
-    two_way = scope[~scope["ContractValued"]]
+    two_way = scope[scope["ValueNote"] == TWO_WAY_NOTE]
     if not two_way.empty:
         print(f"\n{TWO_WAY_NOTE}: {', '.join(two_way['Pitcher'])}")
 
@@ -464,9 +515,15 @@ def grade_league() -> pd.DataFrame:
     merged = compute_projected_war(merged)
     merged = apply_risk_shrinkage(merged)
     merged = add_actual_war(merged)
+    merged = add_actual_next_war(merged)
 
-    merged = resolve_contracts(merged, load_salaries(verbose=True))
-    merged, by_year = add_multi_year_surplus(merged)
+    salaries = load_salaries(verbose=True)
+    if salaries is None:
+        print(f"{NO_CONTRACT_NOTE}: salary, surplus and control left blank for every pitcher (no league-minimum defaults)")
+        merged, by_year = no_contracts(merged), pd.DataFrame()
+    else:
+        merged = resolve_contracts(merged, salaries)
+        merged, by_year = add_multi_year_surplus(merged)
 
     merged = merged.sort_values("MultiYearSurplus", ascending=False, na_position="last")
     merged.to_parquet(OUT_PATH, index=False)

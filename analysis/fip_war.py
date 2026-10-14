@@ -175,6 +175,16 @@ def run(seasons: list[int] | None = None, force_refresh: bool = False, top: int 
     return out
 
 
+def ensure(seasons: list[int]) -> list[int]:
+    """FIP-WAR for each season whose fip_war_<season>.csv doesn't exist yet; existing files are left as they are."""
+    missing = [s for s in seasons if not fip_war_path(s).exists()]
+    print(f"FIP-WAR already saved: {', '.join(str(s) for s in seasons if s not in missing) or 'none'}; "
+          f"computing: {', '.join(map(str, missing)) or 'none'}")
+    if missing:
+        run(missing)
+    return missing
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="FIP-based WAR from MLB Stats API season totals.")
     parser.add_argument("--season", type=int, action="append", help="Season(s) to compute (default: config.CALIBRATION_SEASONS)")

@@ -15,7 +15,7 @@ from colors import (  # noqa: E402  (dashboard-local helper module)
 )
 from pitch_types import pitch_name  # noqa: E402
 from config import MIN_PITCHES_DASHBOARD, MIN_PITCHES_FOR_INCLUSION  # noqa: E402
-from season import DATA_ROOT, data_dir, data_version, selected_season  # noqa: E402
+from season import DATA_ROOT, SEASONS, data_dir, data_version, is_out_of_sample, projection_note, selected_season  # noqa: E402
 
 SEASON = selected_season()
 NEXT_SEASON = SEASON + 1
@@ -36,6 +36,9 @@ ACTUAL_WAR = f"{SEASON} FIP-WAR"
 SALARY = f"{SEASON} salary ($M)"
 SURPLUS = f"Surplus from {NEXT_SEASON} ($M)"
 IP = f"{SEASON} IP"
+ACTUAL_NEXT = f"Actual {NEXT_SEASON} WAR"   # past seasons only: what happened the season the projection is for
+MODEL_NOTE = projection_note(SEASON)
+NO_CONTRACTS_TEXT = f"No {SEASON} contract data"
 
 # preset -> (column sorted on, label); every one sorts high to low
 PRESETS = {
@@ -59,7 +62,9 @@ COLUMN_HELP = {
     "Volatility percentile": "How much his velocity and release point change from outing to outing vs. the league, where lower is steadier.",
     "Injury risk": "0 (no IL time) to 1 (a full season or two arm IL stints) over the last few seasons.",
     ACTUAL_WAR: f"Wins above replacement he actually produced in {SEASON}, from strikeouts, walks, hit batters, home runs and innings.",
-    PROJ_WAR: f"Projected {NEXT_SEASON} FIP-WAR: expected runs allowed per 9 innings times expected innings.",
+    PROJ_WAR: (f"Projected {NEXT_SEASON} FIP-WAR: expected runs allowed per 9 innings times expected innings. "
+               + (MODEL_NOTE + "." if MODEL_NOTE else "")),
+    ACTUAL_NEXT: f"The FIP-WAR he actually produced in {NEXT_SEASON} (0 if he did not pitch in the majors that season).",
     SALARY: f"What he is paid in {SEASON}, in millions.",
     "Control left": f"Seasons from {NEXT_SEASON} on that a team controls him before free agency.",
     SURPLUS: f"Projected value minus salary over every year of control from {NEXT_SEASON} on, discounted to today.",
@@ -75,6 +80,7 @@ COLORED = {
     "Volatility percentile": ("VolatilityPercentile", "VolatilityReliability"),
     ACTUAL_WAR: ("ActualWAR", None),
     PROJ_WAR: ("RiskAdjWAR", None),
+    ACTUAL_NEXT: ("ActualNextWAR", None),
     SALARY: ("Salary_M", None),
     SURPLUS: ("MultiYearSurplus_M", None),
 }
@@ -106,6 +112,17 @@ if report is None:
     st.stop()
 
 pools = LeaguePools(report, neutral=NEUTRAL_COLOR if is_dark_theme() else NEUTRAL_TEXT_LIGHT)
+# no salaries file that season: no salary / control / surplus columns, preset or color option
+HAS_CONTRACTS = report["Salary_M"].notna().any()
+HAS_ACTUAL_NEXT = "ActualNextWAR" in report and is_out_of_sample(SEASON)
+if not HAS_CONTRACTS:
+    PRESETS.pop("Top multi-year surplus")
+if HAS_ACTUAL_NEXT:
+    PRESETS[f"Top actual {NEXT_SEASON} WAR"] = ("ActualNextWAR", ACTUAL_NEXT)
+if MODEL_NOTE:
+    st.caption(f"{PROJ_WAR}: {MODEL_NOTE}." + (f" {ACTUAL_NEXT} is what actually happened." if HAS_ACTUAL_NEXT else ""))
+if not HAS_CONTRACTS:
+    st.info(f"{NO_CONTRACTS_TEXT}: salary, control and surplus columns are hidden for this season.")
 
 # ── Sidebar filters (both tabs) ──────────────────────────────────────────────
 st.sidebar.title("League filters")
@@ -142,7 +159,7 @@ def leaderboard(rows: pd.DataFrame, preset: str) -> pd.DataFrame:
 def table(rows: pd.DataFrame) -> pd.DataFrame:
     """Display columns (names as on the Team Value Board), ranked in the current order."""
     small = [is_small_sample(a) or is_small_sample(b) for a, b in zip(rows["StuffPlus_Reliability"], rows["LocationPlus_Reliability"])]
-    return pd.DataFrame({
+    out = pd.DataFrame({
         "Rank": np.arange(1, len(rows) + 1),
         "Pitcher": rows["Pitcher"].to_numpy(), "Team": rows["Team"].to_numpy(),
         "Pitches": rows["Pitches"].to_numpy(), IP: rows["ActualIP"].to_numpy(),
@@ -158,11 +175,16 @@ def table(rows: pd.DataFrame) -> pd.DataFrame:
         "Best pitch": [pitch_name(p) if isinstance(p, str) else None for p in rows["BestPitch"]],
         "Most used": [pitch_name(p) if isinstance(p, str) else None for p in rows["MostUsedPitch"]],
     })
+    if HAS_ACTUAL_NEXT:
+        out.insert(out.columns.get_loc(PROJ_WAR) + 1, ACTUAL_NEXT, rows["ActualNextWAR"].to_numpy())
+    return out if HAS_CONTRACTS else out.drop(columns=[SALARY, "Control left", SURPLUS])
 
 
 def cell_colors(shown: pd.DataFrame, rows: pd.DataFrame) -> pd.DataFrame:
     colors = pd.DataFrame(None, index=shown.index, columns=shown.columns, dtype=object)
     for col, (metric, rel_col) in COLORED.items():
+        if col not in shown:
+            continue
         rel = rows[rel_col].to_numpy() if rel_col else np.ones(len(rows))
         values = shown[col].to_numpy()
         if col == SURPLUS:   # the shown cell is text; color the number behind it (none for FA / two-way)
@@ -179,7 +201,7 @@ def money_or_text(v):
 FORMATS = {
     "Pitches": "{:,.0f}", IP: "{:.1f}", "Stuff+": "{:.0f}", "Location+": "{:.0f}", "Upside Index": "{:+.2f}",
     "Volatility percentile": "{:.0f}", "Injury risk": "{:.2f}", ACTUAL_WAR: "{:.1f}", PROJ_WAR: "{:.1f}",
-    SALARY: "{:.2f}", "Control left": "{:.0f}",
+    SALARY: "{:.2f}", "Control left": "{:.0f}", ACTUAL_NEXT: "{:.1f}",
 }
 
 
@@ -230,12 +252,20 @@ def league_scatter(rows: pd.DataFrame, role: str, color_by: str, labeled_ids: se
                                (x_lo, y_lo, "left", "bottom", "Below average both")]:
         fig.add_annotation(x=x, y=y, xanchor=xa, yanchor=ya, text=text, **corner)
 
-    hover = ("<b>%{customdata[1]}</b> (%{customdata[2]}, %{customdata[3]})<br>Pitches: %{customdata[4]:,.0f}"
-             "<br>Stuff+: %{customdata[5]:.1f} · Location+: %{customdata[6]:.1f}<br>Upside Index: %{customdata[7]:+.2f}"
-             f"<br>{ACTUAL_WAR}: %{{customdata[8]:.1f}} · {PROJ_WAR}: %{{customdata[9]:.1f}}"
-             f"<br>{SURPLUS}: %{{customdata[10]}}<extra></extra>")
     custom_cols = ["PitcherId", "Pitcher", "Team", "ProjectedRole", "Pitches", "StuffPlus_Final", "LocationPlus_Reg",
                    "AsymmetricUpsideIndex_Reg", "ActualWAR", "RiskAdjWAR"]
+    hover = ("<b>%{customdata[1]}</b> (%{customdata[2]}, %{customdata[3]})<br>Pitches: %{customdata[4]:,.0f}"
+             "<br>Stuff+: %{customdata[5]:.1f} · Location+: %{customdata[6]:.1f}<br>Upside Index: %{customdata[7]:+.2f}"
+             f"<br>{ACTUAL_WAR}: %{{customdata[8]:.1f}} · {PROJ_WAR}: %{{customdata[9]:.1f}}")
+    if HAS_ACTUAL_NEXT:
+        custom_cols = custom_cols + ["ActualNextWAR"]
+        hover += f" · {ACTUAL_NEXT}: %{{customdata[{len(custom_cols) - 1}]:.1f}}"
+    if MODEL_NOTE:
+        hover += f"<br><i>{MODEL_NOTE}</i>"
+    if HAS_CONTRACTS:
+        hover += f"<br>{SURPLUS}: %{{customdata[{len(custom_cols)}]}}"
+    hover += "<extra></extra>"
+
     def custom(group):
         return group[custom_cols].astype(object).assign(
             Surplus=[money_or_text(surplus_cell(r)) for _, r in group.iterrows()]).values
@@ -322,11 +352,13 @@ for tab, role in zip(tabs[:2], ["starter", "reliever"]):
         st.download_button("Download CSV", shown_all.head(limit).to_csv(index=False).encode(),
                            file_name=f"league_{SEASON}_{role}s_{preset.lower().replace(' ', '_')}.csv",
                            mime="text/csv", key=f"league_csv_{role}")
-        st.caption(f"Free agents after {SEASON} show \"{EST_FA}\" and sort last on surplus; two-way players' contracts are "
-                   "not valued. \"small\" = Stuff+ or Location+ is under 50% reliable. Faded color = less reliable.")
+        st.caption((f"Free agents after {SEASON} show \"{EST_FA}\" and sort last on surplus; two-way players' contracts are "
+                    "not valued. " if HAS_CONTRACTS else f"{NO_CONTRACTS_TEXT}. ")
+                   + "\"small\" = Stuff+ or Location+ is under 50% reliable. Faded color = less reliable.")
 
         st.markdown(f"**Stuff+ vs. Location+, {role}s**")
-        color_by = st.radio("Color by", ["Upside Index", "Multi-year surplus"], horizontal=True, key=f"league_color_{role}")
+        color_by = (st.radio("Color by", ["Upside Index", "Multi-year surplus"], horizontal=True, key=f"league_color_{role}")
+                    if HAS_CONTRACTS else "Upside Index")
         labeled = set(ranked.head(N_LABELS)["PitcherId"]) | set(ranked[ranked["Pitcher"].isin(searched)]["PitcherId"])
         fig, stats = league_scatter(ranked, role, color_by, labeled)
         event = st.plotly_chart(fig, width="stretch", on_select="rerun", selection_mode="points",
@@ -356,8 +388,10 @@ for tab, role in zip(tabs[:2], ["starter", "reliever"]):
 # ── Teams tab: each staff averaged / totaled vs. how the team did ────────────
 # team_staff.csv (analysis/export_report_data.build_team_staff) + team_records.csv (analysis/team_records.py)
 STAFF_GROUP_LABELS = {"All pitchers": "all", "Starters": "starter", "Relievers": "reliever"}
-SEASON_COLORS = {2023: "#eda100", 2024: "#1baf7a", 2025: "#eb6834", 2026: "#2a78d6"}   # validated categorical slots 1-4
-SEASON_SYMBOLS = {2023: "diamond", 2024: "square", 2025: "triangle-up", 2026: "circle"}
+# pooled view: season.SEASONS order (newest first) gets categorical slot 1, then 2, 3, ... (validated together, light mode; the season
+# also has its own marker symbol and every dot carries a team label, so color is never the only cue)
+SEASON_PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"]   # validated categorical slots 1-5
+SEASON_MARKERS = ["circle", "triangle-up", "square", "diamond", "cross"]
 SINGLE_COLOR = "#2a78d6"
 PAYROLL = "Pitching payroll ($M)"
 STAFF_WAR = f"Staff {SEASON} FIP-WAR"
@@ -433,6 +467,8 @@ def team_table(rows: pd.DataFrame, unweighted: bool) -> tuple[pd.DataFrame, pd.D
     colors["Run diff"] = color(shown["Run diff"], True)
     colors["Runs allowed"] = color(shown["Runs allowed"], False)
     for label, (col, better) in TEAM_COLUMNS.items():
+        if col in ("Payroll_M", "Surplus_M") and rows[col].isna().all():
+            continue   # no salaries file that season: no payroll or surplus to show
         shown[label] = rows[col].to_numpy()
         colors[label] = color(shown[label], better)
         if f"{col}_Rank" in rows:
@@ -459,6 +495,9 @@ def team_scatter(data: pd.DataFrame, x_label: str, y_label: str, pooled: bool, h
     hover = (f"<b>%{{customdata[0]}}</b> %{{customdata[1]}}<br>{x_label}: %{{x:{x_fmt}}}<br>{y_label}: %{{y:{y_fmt}}}"
              "<br>W-L: %{customdata[2]}<br>Best pitcher (FIP-WAR): %{customdata[3]}<extra></extra>")
     groups = data.groupby("Season") if pooled else [(None, data)]
+    # color follows the season (its place in the Season selector), never its rank in this chart
+    season_color = {s: SEASON_PALETTE[i % len(SEASON_PALETTE)] for i, s in enumerate(SEASONS)}
+    season_symbol = {s: SEASON_MARKERS[i % len(SEASON_MARKERS)] for i, s in enumerate(SEASONS)}
     for season, g in groups:
         custom = np.column_stack([g["Team"], g["Season"].astype(str) if pooled else [""] * len(g),
                                   [f"{w}-{l}" for w, l in zip(g["Wins"], g["Losses"])],
@@ -468,8 +507,8 @@ def team_scatter(data: pd.DataFrame, x_label: str, y_label: str, pooled: bool, h
             x=g[x_col], y=g[y_col], mode="markers+text", text=g["Team"], textposition="top center",
             textfont=dict(size=9 if pooled else 10), customdata=custom, hovertemplate=hover,
             name=str(season) if pooled else "Teams", showlegend=pooled,
-            marker=dict(size=9 if pooled else 11, color=SEASON_COLORS.get(season, SINGLE_COLOR) if pooled else SINGLE_COLOR,
-                        symbol=SEASON_SYMBOLS.get(season, "circle") if pooled else "circle",
+            marker=dict(size=9 if pooled else 11, color=season_color.get(season, SINGLE_COLOR) if pooled else SINGLE_COLOR,
+                        symbol=season_symbol.get(season, "circle") if pooled else "circle",
                         line=dict(width=1, color="rgba(255,255,255,0.8)")),
         ))
     xs, ys, r = fit_line(data[x_col].astype(float), data[y_col].astype(float))

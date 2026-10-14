@@ -35,6 +35,11 @@ MIN_IP_FOR_RATE_MODEL = 10        # rate model rows need this many IP in t + 1
 # A season after the last calibration season (2026 on) is never fitted on: its next-season projection applies
 # this frozen model (coefficients fit on the CALIBRATION_SEASONS pairs, committed before any 2026 data was pulled)
 FROZEN_WAR_MODEL = "results_frozen/war_model_2025.json"
+# Past seasons (display only) are projected OUT OF SAMPLE: each one's next-season projection comes from the
+# coefficients fit on ONE calibration pair that never saw that next season (war_calibration.py backtest fits, saved in
+# data/results/war_calibration/pair_models.json). Feature season -> the pair's first season (2023 = the 2023->2024 pair).
+# Nothing is refit or reselected for these; seasons not listed here use the calibration / frozen model as before.
+PAIR_MODEL_FOR_SEASON = {2022: 2023, 2023: 2024, 2024: 2023}
 
 # Injury history (analysis/injury_history.py): IL stints pulled for SEASON - N through SEASON
 INJURY_LOOKBACK_SEASONS = 3
@@ -46,7 +51,7 @@ INJURY_ARM_STINTS_FOR_MAX_RISK = 2  # arm IL stints over the lookback window tha
 
 # Contracts / multi-year surplus (ASSUMPTIONS -- used by risk_adjusted_value.py).
 # Surplus starts the season after SEASON (the first season a team acquiring the pitcher now gets).
-LEAGUE_MIN_SALARY_BY_YEAR = {2025: 760_000, 2026: 780_000}  # later years = last known value
+LEAGUE_MIN_SALARY_BY_YEAR = {2022: 700_000, 2023: 720_000, 2024: 740_000, 2025: 760_000, 2026: 780_000}  # later years = last known value
 LEAGUE_MIN_SALARY = LEAGUE_MIN_SALARY_BY_YEAR.get(SEASON, min(LEAGUE_MIN_SALARY_BY_YEAR.values()))
 # Two-way players (MLBAM ids): pitching metrics are graded, but no surplus value is computed,
 # because the salary pays for hitting AND pitching (660271 = Shohei Ohtani)

@@ -39,6 +39,7 @@ METRIC_DIRECTION = {
     "MultiYearSurplus_M": True,
     "SurplusActual_M": True,       # last season's actual FIP-WAR x $/WAR - salary
     "ActualWAR": True,             # last season's FIP-WAR
+    "ActualNextWAR": True,         # past seasons: the FIP-WAR he actually produced the season after
     "EdgePct": True,
     "FirstPitchStrikePct": True,
     "FastballVelo": True,          # avg velocity, fastballs (FF/SI/FC) only
@@ -184,9 +185,10 @@ def stat_html(label: str, value_text: str, color: str | None, percentile: float 
     )
 
 
-def legend_html(min_pitches: int | None = None, season: int = 2025) -> str:
+def legend_html(min_pitches: int | None = None, season: int | None = None) -> str:
     """Gradient key: blue (worse) <- gray (league average) -> red (better), plus the dashboard's pitch minimum."""
-    minimum = (f'<div style="opacity:0.7;">Pitchers with fewer than {min_pitches} pitches in {season} are not shown.</div>'
+    when = f"in {season}" if season else "that season"
+    minimum = (f'<div style="opacity:0.7;">Pitchers with fewer than {min_pitches} pitches {when} are not shown.</div>'
                if min_pitches else "")
     return (
         '<div style="max-width:520px;margin:4px 0 12px 0;font-size:0.8rem;">'

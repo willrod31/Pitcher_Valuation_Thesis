@@ -40,8 +40,18 @@ config.FROZEN_WAR_MODEL (results_frozen/war_model_2025.json: the chosen rate
 model and both playing-time models) to that season's features, the same way
 war_projection does, and writes projections_<season + 1>.csv.
 
+Single-pair models (pair_models.json): the backtest fits above -- the chosen
+rate model and both playing-time models fit on ONE pair -- saved so past
+seasons can be projected out of sample (project_pair_model,
+config.PAIR_MODEL_FOR_SEASON): 2022 and 2024 use the 2023->2024 fit, 2023 the
+2024->2025 fit. save_pair_models() refits exactly what backtest() fits, from
+the saved calibration_rows.csv, and checks it reproduces backtest.csv and the
+2023->2024 rows of coefficients.csv before writing; nothing new is selected.
+
     python -m analysis.war_calibration
     python -m analysis.war_calibration --frozen 2026
+    python -m analysis.war_calibration --save-pair-models
+    python -m analysis.war_calibration --pair-model 2022
 """
 import argparse
 import json
@@ -52,7 +62,8 @@ import pandas as pd
 import statsmodels.api as sm
 
 from config import (
-    CALIBRATION_SEASONS, FIPR9_REGRESSION_IP, FROZEN_WAR_MODEL, MIN_IP_FOR_RATE_MODEL, MIN_PITCHES_TO_DISPLAY, STARTER_GS_SHARE,
+    CALIBRATION_SEASONS, FIPR9_REGRESSION_IP, FROZEN_WAR_MODEL, MIN_IP_FOR_RATE_MODEL, MIN_PITCHES_TO_DISPLAY,
+    PAIR_MODEL_FOR_SEASON, STARTER_GS_SHARE,
 )
 from analysis.fip_war import fip_war_from_rate, load_fip_war, load_league_values
 from analysis.injury_history import API_BASE, _get_json
@@ -65,6 +76,7 @@ MODEL_COMPARISON_PATH = WAR_CALIBRATION_DIR / "model_comparison.csv"
 COEFFICIENTS_PATH = WAR_CALIBRATION_DIR / "coefficients.csv"
 BACKTEST_PATH = WAR_CALIBRATION_DIR / "backtest.csv"
 CHOSEN_MODEL_PATH = WAR_CALIBRATION_DIR / "chosen_model.json"
+PAIR_MODELS_PATH = WAR_CALIBRATION_DIR / "pair_models.json"
 
 
 def projections_path(projected_season: int):
@@ -372,14 +384,13 @@ def linear(coefs: dict, rows: pd.DataFrame, features: list[str]) -> pd.Series:
     return out
 
 
-def project_frozen(season: int) -> pd.DataFrame:
-    """projections_<season + 1>.csv from `season`'s features and the frozen model -- nothing is fit.
+def apply_model(season: int, meta: dict) -> pd.DataFrame:
+    """`season`'s features projected to season + 1 with fixed coefficients (meta as in war_model_2025.json) -- nothing is fit.
 
     Same steps as war_projection(): rate = the chosen rate model; innings =
     the playing-time model for the pitcher's role, clipped at 0; WAR = the
     FIP-WAR formula with `season`'s league values and his own GS/G and IP/G.
     """
-    meta = frozen_model()
     rate_name, rate_features, pt_features = meta["chosen_rate_model"], meta["rate_features"], meta["pt_features"]
     rows = add_age(season_features(season), season)
     out = rows.copy()
@@ -390,17 +401,112 @@ def project_frozen(season: int) -> pd.DataFrame:
         data = data.dropna(subset=pt_features)
         out.loc[data.index, "ProjectedIP"] = linear(meta["coefficients"][f"PT_{role}"], data, pt_features).clip(lower=0)
     out["ProjectedWAR"] = project_war(rows, out["ProjectedFIPR9"], out["ProjectedIP"], load_league_values(season))
-    projected_season = season + 1
     projections = out[["PitcherId", "Pitcher", "Team", "Role", "Age", "Season", "IP", "G", "GS", "GSShare", "FIPR9_raw",
                        "FIPR9_reg", "KminusBBPct", "WAR_t", "StuffPlus", "LocationPlus", "UpsideIndex",
                        "VolatilityScore_Reg", "InjuryRiskScore", "LegacyProjectedWAR",
                        "ProjectedFIPR9", "ProjectedIP", "ProjectedWAR"]].rename(columns={"WAR_t": "FIPWAR"})
-    projections.insert(6, "ProjectedSeason", projected_season)
-    projections = projections.sort_values("ProjectedWAR", ascending=False)
+    projections.insert(6, "ProjectedSeason", season + 1)
+    return projections.sort_values("ProjectedWAR", ascending=False)
+
+
+def project_frozen(season: int) -> pd.DataFrame:
+    """projections_<season + 1>.csv from `season`'s features and the frozen model -- nothing is fit."""
+    meta = frozen_model()
+    projections = apply_model(season, meta)
+    projected_season = season + 1
     projections.to_csv(projections_path(projected_season), index=False)
     print(f"Projected {projected_season} from {season} with the FROZEN model {FROZEN_WAR_MODEL} "
-          f"({rate_name} x playing time, fit on {meta['final_fit']}; not refit on {season}): "
+          f"({meta['chosen_rate_model']} x playing time, fit on {meta['final_fit']}; not refit on {season}): "
           f"{len(projections)} pitchers -> {projections_path(projected_season)}")
+    return projections
+
+
+# ── Single-pair models (past seasons, out of sample) ──────────────────────────
+
+def pair_name(first_season: int) -> str:
+    return f"{first_season}->{first_season + 1}"
+
+
+def save_pair_models() -> dict:
+    """PAIR_MODELS_PATH: the chosen rate model + playing-time models fit on each single calibration pair.
+
+    These are the fits backtest() makes (and, for the first pair, evaluate());
+    they were never saved, so they are refit here from the SAVED
+    calibration_rows.csv with the same functions, then checked against
+    backtest.csv (every projection) and coefficients.csv (the 2023->2024 rows)
+    before anything is written. No new pair, feature set or model choice.
+    """
+    chosen = json.loads(CHOSEN_MODEL_PATH.read_text())
+    name, features = chosen["chosen_rate_model"], chosen["rate_features"]
+    rows = pd.read_csv(CALIBRATION_ROWS_PATH)
+    pairs = rows.dropna(subset=["WAR_next"])
+    saved_bt = pd.read_csv(BACKTEST_PATH)
+    saved_coefs = pd.read_csv(COEFFICIENTS_PATH)
+    out = {}
+    for first, train in pairs.groupby("Season"):
+        rate, pt = fit_rate(train, features), fit_playing_time(train)
+        label = pair_label(train)
+        # check 1: the same coefficients as coefficients.csv where that fit was saved (the evaluate() training pair)
+        for model_name, model in [(name, rate), *[(f"PT_{r}", m) for r, m in pt.items()]]:
+            saved = saved_coefs[(saved_coefs["Model"] == model_name) & (saved_coefs["FitOn"] == label)]
+            if not saved.empty:
+                diff = (saved.set_index("Term")["Coef"] - model.params).abs().max()
+                if diff > 1e-9:
+                    raise ValueError(f"{model_name} fit on {label} differs from coefficients.csv by {diff}")
+                print(f"  {model_name} fit on {label}: matches coefficients.csv (max |diff| {diff:.1e})")
+        # check 2: the other pair's out-of-sample projections match backtest.csv
+        for season, test in pairs[pairs["Season"] != first].groupby("Season"):
+            proj = war_projection(test, rate, features, pt)["ProjectedWAR"].round(2)
+            ref = saved_bt[(saved_bt["Season"] == season) & (saved_bt["ModelFitOn"] == label)].set_index("PitcherId")
+            diff = (proj.set_axis(test["PitcherId"]) - ref["ProjectedWAR_next"]).abs().max()
+            if not len(ref) or diff > 0.0101:
+                raise ValueError(f"{label} model doesn't reproduce backtest.csv for {season} (max |diff| {diff})")
+            print(f"  {label} model reproduces backtest.csv for {season} -> {season + 1}: {len(ref)} pitchers, "
+                  f"max |diff| {diff:.3f}")
+        out[label] = {
+            "chosen_rate_model": name, "rate_features": features, "pt_features": chosen["pt_features"],
+            "risk_in_rate_model": chosen["risk_in_rate_model"],
+            "risk_in_playing_time_model": chosen["risk_in_playing_time_model"],
+            "final_fit": label, "train_pair": label, "n_rate": int(rate.nobs),
+            "n_playing_time": {r: int(m.nobs) for r, m in pt.items()},
+            "coefficients": {name: {k: float(v) for k, v in rate.params.items()},
+                             **{f"PT_{r}": {k: float(v) for k, v in m.params.items()} for r, m in pt.items()}},
+        }
+    meta = {"source": "war_calibration.backtest() single-pair fits (chosen rate model + playing-time models), "
+                      "refit from calibration_rows.csv and checked against backtest.csv / coefficients.csv",
+            "chosen_model": str(CHOSEN_MODEL_PATH.name), "pairs": out}
+    PAIR_MODELS_PATH.write_text(json.dumps(meta, indent=1))
+    print(f"Saved {len(out)} single-pair model(s) ({', '.join(out)}) to {PAIR_MODELS_PATH}")
+    return meta
+
+
+def pair_model(season: int) -> dict:
+    """The single-pair model that projects `season` (config.PAIR_MODEL_FOR_SEASON), with a plain-words note."""
+    label = pair_name(PAIR_MODEL_FOR_SEASON[season])
+    if not PAIR_MODELS_PATH.exists():
+        raise FileNotFoundError(f"{PAIR_MODELS_PATH} not found -- run python -m analysis.war_calibration --save-pair-models")
+    meta = dict(json.loads(PAIR_MODELS_PATH.read_text())["pairs"][label])
+    first, target = PAIR_MODEL_FOR_SEASON[season], PAIR_MODEL_FOR_SEASON[season] + 1
+    projected = season + 1
+    if projected == target or season == first:
+        raise ValueError(f"the {label} model was fit on {season}->{projected} rows: it can't project {season} out of sample")
+    if projected > target:
+        seen = f"did not see {projected}"
+    else:   # projected == first: that season's stats were the training rows' INPUTS, never the answers it was fit to
+        seen = f"never trained on {projected} results: {projected} stats were only inputs, its answers were {target}"
+    meta.update({"projected_season": projected, "feature_season": season, "out_of_sample": True,
+                 "note": f"Model trained on {label} only ({seen})"})
+    return meta
+
+
+def project_pair_model(season: int) -> pd.DataFrame:
+    """projections_<season + 1>.csv for a past season, from the single-pair model that never saw season + 1."""
+    meta = pair_model(season)
+    projections = apply_model(season, meta)
+    projected_season = season + 1
+    projections.to_csv(projections_path(projected_season), index=False)
+    print(f"Projected {projected_season} from {season} OUT OF SAMPLE: {meta['note']} "
+          f"({meta['chosen_rate_model']} x playing time): {len(projections)} pitchers -> {projections_path(projected_season)}")
     return projections
 
 
@@ -499,5 +605,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Calibrate the WAR projection against FIP-WAR (rate x playing time).")
     parser.add_argument("--frozen", type=int, default=None, metavar="SEASON",
                         help="Only project SEASON + 1 with config.FROZEN_WAR_MODEL (no fitting), e.g. --frozen 2026")
+    parser.add_argument("--save-pair-models", action="store_true",
+                        help="Only save the backtest's single-pair models to pair_models.json (checked, nothing new fit)")
+    parser.add_argument("--pair-model", type=int, default=None, metavar="SEASON",
+                        help="Only project SEASON + 1 with its single-pair model (config.PAIR_MODEL_FOR_SEASON)")
     args = parser.parse_args()
-    project_frozen(args.frozen) if args.frozen else run()
+    if args.save_pair_models:
+        save_pair_models()
+    elif args.pair_model:
+        project_pair_model(args.pair_model)
+    else:
+        project_frozen(args.frozen) if args.frozen else run()

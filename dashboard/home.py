@@ -11,7 +11,9 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(1, str(Path(__file__).parent.parent))
 from colors import legend_html  # noqa: E402
-from season import FROZEN_MODEL_NOTE, SEASONS, data_dir, selected_season  # noqa: E402
+from season import (  # noqa: E402
+    SEASONS, coverage_note, data_dir, fit_years, is_out_of_sample, projection_note, selected_season, war_model as season_war_model,
+)
 from pitch_types import PITCH_TYPE_ABBR, pitch_abbr, pitch_label, pitch_name  # noqa: E402
 from config import (  # noqa: E402
     ARB_PCT_OF_MARKET, COMMAND_METRIC, DISCOUNT_RATE, DOLLARS_PER_WAR, DOLLARS_PER_WAR_GROWTH, FIPR9_REGRESSION_IP,
@@ -27,7 +29,7 @@ NEXT_SEASON = SEASON + 1
 ROOT = Path(__file__).parent.parent
 DATA_DIR = data_dir(SEASON)                            # dashboard/data/<SEASON>/
 STABILIZATION_PATH = DATA_DIR / "stabilization.csv"   # copy of data/results/stabilization.csv (2025 k, every season)
-WAR_MODEL_PATH = DATA_DIR / "war_model.json"           # chosen_model.json + final coefficients (2026: the frozen 2025 model)
+WAR_MODEL_PATH = DATA_DIR / "war_model.json"           # the model that projected NEXT_SEASON (frozen, or a past season's single-pair model)
 # $/WAR in a season = DOLLARS_PER_WAR x (1 + growth) ** (season - DOLLARS_PER_WAR_YEAR) (risk_adjusted_value.dollars_per_war)
 GROWTH_YEARS_NEXT = NEXT_SEASON - DOLLARS_PER_WAR_YEAR   # growth years in the first valued season
 GROWTH_YEARS_NOW = SEASON - DOLLARS_PER_WAR_YEAR
@@ -41,6 +43,16 @@ PROJ_WAR_LABEL = f"Projected {NEXT_SEASON} WAR"
 ACTUAL_WAR_LABEL = f"{SEASON} FIP-WAR (actual)"
 SURPLUS_LABEL = f"Multi-yr surplus from {NEXT_SEASON}"
 SURPLUS_ACTUAL_LABEL = f"{SEASON} surplus, actual"
+OUT_OF_SAMPLE = is_out_of_sample(SEASON)   # a past season: single-pair model, next season's answer known
+MODEL_NOTE = projection_note(SEASON)
+# the calibration itself (pairs it was fit and tested on) is described by the frozen model, whichever season is shown
+CALIBRATION = next((m for m in map(season_war_model, SEASONS) if m and not m.get("out_of_sample")), {})
+CALIBRATION_PAIRS = CALIBRATION.get("final_fit", "").split(" + ") if CALIBRATION.get("final_fit") else []
+CALIBRATION_YEARS = fit_years(CALIBRATION)
+TRAIN_PAIR = CALIBRATION.get("train_pair", "the first pair").replace("->", "→")
+TEST_PAIR = CALIBRATION.get("test_pair", "the second pair").replace("->", "→")
+REPORT_PATH = DATA_DIR / "pitcher_report_data.csv"
+HAS_CONTRACTS = REPORT_PATH.exists() and pd.read_csv(REPORT_PATH, usecols=["Salary_M"])["Salary_M"].notna().any()
 
 _ARITHMETIC = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, ast.Div: operator.truediv}
 
@@ -89,8 +101,7 @@ st.title("Valuing Pitcher Volatility")
 st.markdown("#### Finding undervalued pitchers for low-payroll MLB teams")
 
 st.page_link("pitchers.py", label="Open the dashboard", icon=":material/arrow_forward:")
-st.caption(f"The dashboard covers the {' and '.join(map(str, sorted(SEASONS)))} seasons (Season selector in the "
-           f"sidebar). {FROZEN_MODEL_NOTE}")
+st.caption(coverage_note())
 
 st.header("The question")
 st.markdown(
@@ -466,7 +477,7 @@ with st.expander(f"**{PROJ_WAR_LABEL}**"):
     st.markdown(
         f"""
 Next season's WAR is built from two separate predictions, both learned from what really happened to every pitcher
-from 2023 to 2024 and from 2024 to 2025:
+from one season to the next ({' and '.join(p.replace('->', '→') for p in CALIBRATION_PAIRS) or 'the calibration pairs'}):
 
 - **How good per inning** (runs allowed per 9 innings): from Stuff+, Location+, his role and this season's results.
 - **How many innings**: from this season's innings, his age, his injury history and his volatility. A pitcher who
@@ -475,13 +486,17 @@ from 2023 to 2024 and from 2024 to 2025:
 The two are combined with the same WAR formula as above. Because injury and volatility already shape the innings
 prediction, there is **no extra hand-set risk discount** on top.
 
-Fitted on 2023→2024 and tested on 2024→2025, a season it never saw, it predicted next-season WAR much better than
+Fitted on {TRAIN_PAIR} and tested on {TEST_PAIR}, a season it never saw, it predicted next-season WAR much better than
 the old formula and a little better than "same as last year". It is cautious: the very best pitchers are projected
 about 0.8 WAR lower than they tend to produce, because it pulls everyone toward average.
 """
     )
-    if SEASON > 2025:
-        st.info(f"{FROZEN_MODEL_NOTE} The {SEASON} season's features go into exactly the same coefficients to project "
+    if OUT_OF_SAMPLE:
+        st.info(f"Out-of-sample projection: {MODEL_NOTE}. The coefficients below are that single-pair model's, so the "
+                f"{SEASON} projection was made without knowing how {NEXT_SEASON} went; the dashboard shows Actual "
+                f"{NEXT_SEASON} WAR next to it.")
+    elif CALIBRATION_YEARS and SEASON > CALIBRATION_YEARS[-1]:
+        st.info(f"{MODEL_NOTE}. The {SEASON} season's features go into exactly the same coefficients to project "
                 f"{NEXT_SEASON}; {SEASON} is held out to test the model later.")
     keep_tex = (r"\text{Keep} = \left(1 - s_v \cdot \frac{\text{pct}}{100}\right)\left(1 - s_i \cdot \text{Risk}\right)")
     risk_adj_tex = (tx(PROJ_WAR_LABEL) + r" = \text{repl}_{\text{WAR}} + (\text{ProjectedWAR} - "
@@ -549,6 +564,9 @@ about 0.8 WAR lower than they tend to produce, because it pulls everyone toward 
         ])
 
 with st.expander(f"**{SURPLUS_LABEL}**: the bottom line"):
+    if not HAS_CONTRACTS:
+        st.info(f"No {SEASON} contract data: there is no salaries file for {SEASON}, so this season shows no salary, "
+                "surplus or contract values (they are never filled in with league-minimum defaults).")
     st.markdown(
         f"""
 What the pitcher is worth minus what he's paid, added up over every year of team control he has left, **starting in
@@ -682,11 +700,11 @@ st.markdown(
 
 st.header("Limitations")
 st.markdown(
-    """
+    f"""
 - Stuff+ and Location+ are simpler, homemade versions of the commercial stats.
 - Location+ can't see the catcher's target.
 - WAR is our own FIP-WAR: no ballpark or bullpen-leverage adjustments, so closers are undervalued.
-- The WAR projection is fitted on only two season-to-season pairs (2023→2024, 2024→2025).
+- The WAR projection is fitted on only {len(CALIBRATION_PAIRS) or 'two'} season-to-season pairs ({', '.join(p.replace('->', '→') for p in CALIBRATION_PAIRS)}).
 - Projected WAR is held flat across the control years (no aging curve).
 - Value assumptions (arbitration raises, $/WAR, discount rate) are set by hand, not fitted.
 - Some contract and control values are estimates.
