@@ -14,6 +14,7 @@ MIN_PITCHES_PER_TYPE_FOR_SCALE = 100  # pitcher x pitch type rows in the pool fo
 # "location_plus" (analysis/location_plus_proxy.py) or "legacy" (z(Edge%) - z(Meatball%) - z(BB%))
 COMMAND_METRIC = "location_plus"
 DOLLARS_PER_WAR = 9_500_000
+DOLLARS_PER_WAR_YEAR = 2025      # DOLLARS_PER_WAR is in this season's dollars; season y = DOLLARS_PER_WAR x (1 + growth) ** (y - this)
 
 # Module 3: risk-adjusted value
 # "calibrated" = projected next-season FIP-WAR from analysis/war_calibration.py (rate x playing time,
@@ -30,6 +31,9 @@ FIPR9_REGRESSION_IP = 40          # FIPR9 regressed toward the league: (IP x FIP
 STARTER_GS_SHARE = 0.5            # role = starter if GS / G >= this
 CALIBRATION_SEASONS = [2023, 2024, 2025]   # feature seasons t pair with t + 1; the last one is projected forward
 MIN_IP_FOR_RATE_MODEL = 10        # rate model rows need this many IP in t + 1
+# A season after the last calibration season (2026 on) is never fitted on: its next-season projection applies
+# this frozen model (coefficients fit on the CALIBRATION_SEASONS pairs, committed before any 2026 data was pulled)
+FROZEN_WAR_MODEL = "results_frozen/war_model_2025.json"
 
 # Injury history (analysis/injury_history.py): IL stints pulled for SEASON - N through SEASON
 INJURY_LOOKBACK_SEASONS = 3

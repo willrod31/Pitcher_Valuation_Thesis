@@ -2,7 +2,7 @@
 Risk-Adjusted Value Projection.
 
 Projects each pitcher's WAR for the season after config.SEASON (2026 for the
-2025 data) and ranks pitchers by multi-year surplus value over their remaining
+2025 data, 2027 for 2026) and ranks pitchers by multi-year surplus value over their remaining
 years of team control, starting that season -- the first one a team acquiring
 the pitcher now would get.
 
@@ -10,7 +10,8 @@ WAR (config.WAR_MODEL):
 - "calibrated" (default): projected next-season FIP-WAR from
   analysis/war_calibration.py -- a rate model (FIPR9) times a playing-time
   model (IP), fitted on real 2023->2024 results, tested on 2024->2025, refit
-  on both. The playing-time model already uses VolatilityScore_Reg and
+  on both. A season after config.CALIBRATION_SEASONS (2026) is never fitted on:
+  war_calibration.project_frozen applies config.FROZEN_WAR_MODEL to it. The playing-time model already uses VolatilityScore_Reg and
   InjuryRiskScore (and the rate model may too), so the hand-set
   VOLATILITY_SHRINKAGE / INJURY_SHRINKAGE are NOT applied on top (that would
   count the risk twice): both are set to 0 and a note says which model
@@ -21,8 +22,8 @@ WAR (config.WAR_MODEL):
   (= simple_projected_war) for comparison.
 
 ActualWAR<SEASON> is the pitcher's real FIP-WAR that season (analysis/fip_war.py),
-and SurplusActual<SEASON> = ActualWAR x $/WAR - that season's salary, a look-back
-number only.
+and SurplusActual<SEASON> = ActualWAR x that season's $/WAR - that season's salary,
+a look-back number only.
 
 Contracts come from the hand-collected data/salaries_<SEASON>.csv (joined on
 PitcherId). Blank ContractStatus / YearsControl / PreArbYearsLeft /
@@ -39,7 +40,9 @@ control year, capped at config.MAX_CONTROL_YEARS, with ProjectedWAR held
 FLAT (no aging curve). Salary per year: GuaranteedFuture when listed; league
 minimum for pre-arb years; max(prior salary, ARB_PCT_OF_MARKET x WAR x $/WAR)
 for arb years (prior salary starts at SEASON's salary); AAV / prior salary
-otherwise. $/WAR = DOLLARS_PER_WAR x (1 + DOLLARS_PER_WAR_GROWTH) ** (t + 1).
+otherwise. $/WAR in season y = DOLLARS_PER_WAR x (1 + DOLLARS_PER_WAR_GROWTH) ** (y -
+DOLLARS_PER_WAR_YEAR), so 2026 = 9.5M x 1.05 and 2027 = 9.5M x 1.05^2 whichever
+season is graded (for SEASON = 2025 this is the old (t + 1) exponent).
 Surplus = WAR x $/WAR - Salary, discounted by (1 + DISCOUNT_RATE) ** t.
 Pitchers with no control left (free agents after SEASON) get a blank
 MultiYearSurplus and a ValueNote saying so -- not a zero. All of those rates
@@ -53,6 +56,7 @@ qualified pool's mean/SD. Raw columns stay in the output.
 """
 import argparse
 import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -62,6 +66,9 @@ from config import (
     DISCOUNT_RATE,
     DOLLARS_PER_WAR,
     DOLLARS_PER_WAR_GROWTH,
+    DOLLARS_PER_WAR_YEAR,
+    FROZEN_WAR_MODEL,
+    CALIBRATION_SEASONS,
     INJURY_ARM_STINTS_FOR_MAX_RISK,
     INJURY_DAYS_FOR_MAX_RISK,
     INJURY_SHRINKAGE,
@@ -91,7 +98,10 @@ OUT_PATH = RESULTS_DIR / "risk_adjusted_value.parquet"
 FIRST_VALUE_SEASON = SEASON + 1   # surplus starts here: the first season an acquiring team gets
 # written by analysis/war_calibration.py (not imported from it: it imports this module)
 PROJECTIONS_PATH = WAR_CALIBRATION_DIR / f"projections_{FIRST_VALUE_SEASON}.csv"
-CHOSEN_MODEL_PATH = WAR_CALIBRATION_DIR / "chosen_model.json"
+# seasons after the calibration seasons are projected by the frozen model, so its metadata says which model carries risk
+USES_FROZEN_MODEL = SEASON > max(CALIBRATION_SEASONS)
+CHOSEN_MODEL_PATH = (Path(__file__).resolve().parent.parent / FROZEN_WAR_MODEL if USES_FROZEN_MODEL
+                     else WAR_CALIBRATION_DIR / "chosen_model.json")
 ACTUAL_WAR_PATH = WAR_CALIBRATION_DIR / f"fip_war_{SEASON}.csv"
 ACTUAL_WAR_COL = f"ActualWAR{SEASON}"
 SURPLUS_ACTUAL_COL = f"SurplusActual{SEASON}"
@@ -105,6 +115,11 @@ SALARY_SOURCE_DEFAULT = "Default: league minimum (not in salaries file)"
 SALARY_SOURCE_TWO_WAY = "Two-way player: not valued"
 TWO_WAY_NOTE = "Two-way player: contract not valued"
 VOLATILITY_PERCENTILE_USED = "VolatilityPercentile_Reg" if USE_REGRESSED else "VolatilityPercentile"
+
+
+def dollars_per_war(season: int) -> float:
+    """$/WAR in `season`: DOLLARS_PER_WAR in DOLLARS_PER_WAR_YEAR dollars, growing DOLLARS_PER_WAR_GROWTH a year."""
+    return DOLLARS_PER_WAR * (1 + DOLLARS_PER_WAR_GROWTH) ** (season - DOLLARS_PER_WAR_YEAR)
 
 
 def league_min_salary(year: int) -> int:
@@ -216,7 +231,7 @@ def add_actual_war(merged: pd.DataFrame) -> pd.DataFrame:
 
 
 def resolve_contracts(merged: pd.DataFrame, salaries: pd.DataFrame | None) -> pd.DataFrame:
-    """2025 contract for every pitcher, in this order of precedence:
+    """config.SEASON's contract for every pitcher, in this order of precedence:
 
     1. salaries file row: its Salary, ContractStatus and YearsControl win
        (blank YearsControl / pre-arb / arb years fall back to the debut-date estimate).
@@ -336,8 +351,8 @@ def project_control_years(row) -> pd.DataFrame:
     prior_salary = row["Salary"]   # SEASON's salary: the floor for the first arb raise
     for t in range(years):
         season = FIRST_VALUE_SEASON + t
-        dollars_per_war = DOLLARS_PER_WAR * (1 + DOLLARS_PER_WAR_GROWTH) ** (t + 1)
-        market_value = war * dollars_per_war
+        per_war = dollars_per_war(season)
+        market_value = war * per_war
         if t < pre_arb_left:
             stage = "pre-arb"
         elif t < pre_arb_left + arb_left:
@@ -362,7 +377,7 @@ def project_control_years(row) -> pd.DataFrame:
         surplus = market_value - salary
         rows.append({
             "PitcherId": row["PitcherId"], "Pitcher": row["Pitcher"], "Season": season, "YearIndex": t,
-            "Stage": stage, "ProjectedWAR": war, "DollarsPerWAR": dollars_per_war,
+            "Stage": stage, "ProjectedWAR": war, "DollarsPerWAR": per_war,
             "Salary": salary, "SalarySource": source, "Surplus": surplus,
             "DiscountFactor": discount, "DiscountedSurplus": surplus / discount,
         })
@@ -373,7 +388,7 @@ def project_control_years(row) -> pd.DataFrame:
 def add_multi_year_surplus(merged: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Adds SurplusActual<SEASON> / RemainingControl / MultiYearSurplus / ControlYearsUsed / SurplusPerControlYear."""
     merged = merged.copy()
-    merged[SURPLUS_ACTUAL_COL] = merged[ACTUAL_WAR_COL] * DOLLARS_PER_WAR - merged["Salary"]
+    merged[SURPLUS_ACTUAL_COL] = merged[ACTUAL_WAR_COL] * dollars_per_war(SEASON) - merged["Salary"]
     merged["RemainingControl"] = (merged["YearsControl"] - 1).clip(lower=0)
     free_agent = merged["ContractValued"] & merged["Salary"].notna() & (merged["RemainingControl"] == 0)
     merged.loc[free_agent, "ValueNote"] = FREE_AGENT_NOTE

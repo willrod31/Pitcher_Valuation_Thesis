@@ -52,13 +52,13 @@ from config import (
 )
 from analysis.data_acquisition import filter_to_team, load_season_monthly, lookup_mlbam_id, pitchers_only, primary_team
 from analysis.stabilization import load_k, regress, reliability
-from analysis.utils import LOCATION_PLUS_DIR, WRITES_DASHBOARD, scale_100
+from analysis.utils import DASHBOARD_DATA_DIR, LOCATION_PLUS_DIR, WRITES_DASHBOARD, scale_100
 
 PITCHES_PATH = LOCATION_PLUS_DIR / "location_plus_pitches.parquet"
 SUMMARY_PATH = LOCATION_PLUS_DIR / "location_plus_summary.parquet"
 PITCHER_PATH = LOCATION_PLUS_DIR / "location_plus_pitcher.parquet"
 RELIABILITY_PATH = LOCATION_PLUS_DIR / "command_reliability.csv"
-DASHBOARD_PATH = Path(__file__).resolve().parent.parent / "dashboard" / "data" / "location_plus_pitch_types.csv"
+DASHBOARD_PATH = DASHBOARD_DATA_DIR / "location_plus_pitch_types.csv"   # dashboard/data/<SEASON>/
 
 # release_speed/spin/extension/pfx are loaded ONLY because load_season_monthly's
 # shared cleaning step filters on them (same pitch pool as Stuff+) -- they are

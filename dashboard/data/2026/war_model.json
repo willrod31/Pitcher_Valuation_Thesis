@@ -1,0 +1,47 @@
+{
+ "chosen_rate_model": "R3",
+ "rate_features": [
+  "FIPR9_reg",
+  "KminusBBPct",
+  "StuffPlus",
+  "LocationPlus",
+  "Starter"
+ ],
+ "pt_features": [
+  "IP",
+  "Age",
+  "InjuryRiskScore",
+  "VolatilityScore_Reg"
+ ],
+ "reason": "R4 test RMSE 0.894332 >= R3 0.893086, so R3 (volatility + injury don't improve the rate forecast)",
+ "risk_in_rate_model": false,
+ "risk_in_playing_time_model": true,
+ "train_pair": "2023->2024",
+ "test_pair": "2024->2025",
+ "final_fit": "2023->2024 + 2024->2025",
+ "projected_season": 2026,
+ "coefficients": {
+  "PT_reliever": {
+   "const": 38.749568,
+   "IP": 0.637872,
+   "Age": -1.085455,
+   "InjuryRiskScore": 2.297012,
+   "VolatilityScore_Reg": 0.304524
+  },
+  "PT_starter": {
+   "const": 62.347244,
+   "IP": 0.599863,
+   "Age": -1.416641,
+   "InjuryRiskScore": 5.827227,
+   "VolatilityScore_Reg": -2.765871
+  },
+  "R3": {
+   "const": 4.3414,
+   "FIPR9_reg": 0.392078,
+   "KminusBBPct": -1.541421,
+   "StuffPlus": -0.015837,
+   "LocationPlus": 0.000841,
+   "Starter": 0.068528
+  }
+ }
+}

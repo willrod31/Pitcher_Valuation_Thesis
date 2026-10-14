@@ -1,4 +1,5 @@
 """Shared helpers used across the analysis modules."""
+import os
 from pathlib import Path
 
 import numpy as np
@@ -31,8 +32,12 @@ def season_results_dir(season: int) -> Path:
 RESULTS_DIR = season_results_dir(SEASON)
 WAR_CALIBRATION_DIR = BASE_RESULTS_DIR / "war_calibration"
 SEASON_STATS_DIR = MLB_API_DIR / "season_stats"
-# dashboard/data/ holds DEFAULT_SEASON only; other seasons never write to it
-WRITES_DASHBOARD = SEASON == DEFAULT_SEASON
+# dashboard/data/<SEASON>/: each dashboard season's exports (same file names every season).
+# DEFAULT_SEASON always writes there; another season only with THESIS_DASHBOARD=1
+# (python -m analysis.run_all --season 2026 --dashboard). League-only seasons (2023, 2024) never do.
+DASHBOARD_ROOT = Path(__file__).resolve().parent.parent / "dashboard" / "data"
+DASHBOARD_DATA_DIR = DASHBOARD_ROOT / str(SEASON)
+WRITES_DASHBOARD = SEASON == DEFAULT_SEASON or os.environ.get("THESIS_DASHBOARD") == "1"
 STUFF_PLUS_DIR = RESULTS_DIR / "stuff_plus"
 LOCATION_PLUS_DIR = RESULTS_DIR / "location_plus"
 for _d in (STATCAST_LEAGUE_DIR, STATCAST_TEAM_DIR, STATCAST_PITCHER_DIR, TRANSACTIONS_DIR, GAMELOG_DIR,

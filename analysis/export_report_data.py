@@ -43,11 +43,11 @@ FreeAgentAfterSeason = True when no control is left.
 ContractEstimated = on the default contract (not in the salaries file, not
 pre-arb: league minimum, 1 year, FA); the dashboard tags it "est. contract".
 ContractValued = False for config.TWO_WAY_EXCLUDE_VALUE (no surplus values;
-ValueNote says so). team_paid_2025.csv: what each team paid a pitcher it
+ValueNote says so). team_paid_<SEASON>.csv: what each team paid a pitcher it
 shared (the salaries file's TeamPaid<SEASON>, exported as TeamPaid), one row per pitcher x team.
 
 Dashboard minimum (apply_dashboard_minimum, run last): pitchers with fewer
-than config.MIN_PITCHES_DASHBOARD total 2025 pitches (all teams, so a traded
+than config.MIN_PITCHES_DASHBOARD total pitches that season (all teams, so a traded
 pitcher with 60 for one team and 300 for another stays on both) are removed
 from EVERY dashboard/data/ file, and from data/missing_contract_report.csv,
 so no file has orphan rows. Pitchers at or above it whose shown metrics are
@@ -61,25 +61,29 @@ from pathlib import Path
 
 import pandas as pd
 
-from config import DROP_ALL_NA_PITCHERS, MIN_PITCHES_DASHBOARD, SEASON
+from config import DEFAULT_SEASON, DROP_ALL_NA_PITCHERS, MIN_PITCHES_DASHBOARD, SEASON
 from analysis import location_plus_proxy, stuff_plus_proxy
 from analysis.contract_status import load_team_paid
 from analysis.data_acquisition import pitchers_only
 from analysis.injury_history import STINTS_PATH
 from analysis.risk_adjusted_value import ACTUAL_WAR_COL, OUT_PATH as RISK_ADJUSTED_PATH, SURPLUS_ACTUAL_COL, SURPLUS_BY_YEAR_PATH
-from analysis.utils import WRITES_DASHBOARD
+from analysis.utils import DASHBOARD_DATA_DIR, WRITES_DASHBOARD
 
-DASHBOARD_DATA = Path(__file__).resolve().parent.parent / "dashboard" / "data"
+DASHBOARD_DATA = DASHBOARD_DATA_DIR   # dashboard/data/<SEASON>/ (same file names every season)
 OUT_PATH = DASHBOARD_DATA / "pitcher_report_data.csv"
 SURPLUS_OUT_PATH = DASHBOARD_DATA / "surplus_by_year.csv"
 STINTS_OUT_PATH = DASHBOARD_DATA / "injury_stints.csv"
-TEAM_PAID_OUT_PATH = DASHBOARD_DATA / "team_paid_2025.csv"
-MISSING_REPORT_PATH = Path(__file__).resolve().parent.parent / "data" / "missing_contract_report.csv"
+TEAM_PAID_OUT_PATH = DASHBOARD_DATA / f"team_paid_{SEASON}.csv"
+# PitcherId, CurrentTeam: the team of each pitcher's last appearance (the League page lists a traded pitcher once, there)
+CURRENT_TEAM_OUT_PATH = DASHBOARD_DATA / "current_team.csv"
+# 2025 keeps its original name; other dashboard seasons get their own file
+MISSING_REPORT_PATH = Path(__file__).resolve().parent.parent / "data" / (
+    "missing_contract_report.csv" if SEASON == DEFAULT_SEASON else f"missing_contract_report_{SEASON}.csv")
 # every dashboard/data/ file keyed on PitcherId, filtered by apply_dashboard_minimum()
 DASHBOARD_FILES = [
     stuff_plus_proxy.DASHBOARD_PATH, stuff_plus_proxy.DASHBOARD_PITCHES_PATH, stuff_plus_proxy.MOVEMENT_PITCHES_PATH,
     stuff_plus_proxy.VELOCITY_PATH, location_plus_proxy.DASHBOARD_PATH, OUT_PATH, SURPLUS_OUT_PATH,
-    STINTS_OUT_PATH, TEAM_PAID_OUT_PATH,
+    STINTS_OUT_PATH, TEAM_PAID_OUT_PATH, CURRENT_TEAM_OUT_PATH,
 ]
 # the metrics the dashboard shows per pitcher: (file, column)
 SHOWN_METRICS = [
@@ -113,7 +117,7 @@ def millions(series: pd.Series) -> pd.Series:
 
 def run():
     if not WRITES_DASHBOARD:
-        raise SystemExit(f"dashboard/data/ holds config.DEFAULT_SEASON only; unset THESIS_SEASON to export.")
+        raise SystemExit(f"{SEASON} has no dashboard: export with python -m analysis.run_all --season {SEASON} --dashboard")
     if not RISK_ADJUSTED_PATH.exists():
         raise FileNotFoundError(f"{RISK_ADJUSTED_PATH} not found -- run `python -m analysis.risk_adjusted_value` first.")
 
@@ -208,8 +212,18 @@ def run():
     apply_dashboard_minimum()
 
 
-def pitches_2025() -> pd.Series:
-    """Total cleaned 2025 pitches per PitcherId, all teams (the Stuff+ league table's PitchesThrown)."""
+def save_current_team(league: pd.DataFrame) -> pd.DataFrame:
+    """CURRENT_TEAM_OUT_PATH: each pitcher's team (Statcast code) in his last game of the season, from the league frame."""
+    last = league.sort_values(["game_date", "game_pk"]).drop_duplicates("pitcher", keep="last")
+    out = last.rename(columns={"pitcher": "PitcherId", "PitcherTeam": "CurrentTeam"})[["PitcherId", "CurrentTeam"]]
+    out = pitchers_only(out, "PitcherId").sort_values("PitcherId")
+    out.to_csv(CURRENT_TEAM_OUT_PATH, index=False)
+    print(f"Saved {len(out)} rows to {CURRENT_TEAM_OUT_PATH}")
+    return out
+
+
+def pitches_in_season() -> pd.Series:
+    """Total cleaned SEASON pitches per PitcherId, all teams (the Stuff+ league table's PitchesThrown)."""
     league = pd.read_parquet(stuff_plus_proxy.LEAGUE_PITCHER_PATH, columns=["PitcherId", "PitchesThrown"])
     return league.drop_duplicates("PitcherId").set_index("PitcherId")["PitchesThrown"]
 
@@ -219,7 +233,7 @@ def apply_dashboard_minimum() -> pd.DataFrame:
 
     Returns one row per dropped pitcher x team.
     """
-    thrown = pitches_2025()
+    thrown = pitches_in_season()
     roster = pd.read_csv(stuff_plus_proxy.DASHBOARD_PATH, usecols=["PitcherId", "Pitcher", "PitcherTeam"]) \
         .drop_duplicates(["PitcherId", "PitcherTeam"]).rename(columns={"PitcherTeam": "Team"})
     report = pd.read_csv(OUT_PATH)
@@ -233,22 +247,23 @@ def apply_dashboard_minimum() -> pd.DataFrame:
     all_na = shown.isna().all(axis=1)
     drop_ids = set(pitches.index[pitches < MIN_PITCHES_DASHBOARD])
 
-    by_team = roster.assign(Pitches2025=roster["PitcherId"].map(pitches), AllNA=roster["PitcherId"].map(all_na))
-    dropped = by_team[by_team["PitcherId"].isin(drop_ids)].sort_values(["Team", "Pitches2025"])
-    print(f"\n── Dashboard minimum: {MIN_PITCHES_DASHBOARD} pitches in 2025 (all teams) ──")
+    pitches_col = f"Pitches{SEASON}"
+    by_team = roster.assign(**{pitches_col: roster["PitcherId"].map(pitches)}, AllNA=roster["PitcherId"].map(all_na))
+    dropped = by_team[by_team["PitcherId"].isin(drop_ids)].sort_values(["Team", pitches_col])
+    print(f"\n── Dashboard minimum: {MIN_PITCHES_DASHBOARD} pitches in {SEASON} (all teams) ──")
     print(f"under {MIN_PITCHES_DASHBOARD} pitches: {dropped['PitcherId'].nunique()} pitcher(s) dropped "
           f"({dropped.drop_duplicates('PitcherId')['AllNA'].sum()} of them also all n/a)")
     if not dropped.empty:
-        print(dropped[["Team", "Pitcher", "PitcherId", "Pitches2025", "AllNA"]].to_string(index=False))
+        print(dropped[["Team", "Pitcher", "PitcherId", pitches_col, "AllNA"]].to_string(index=False))
 
     if DROP_ALL_NA_PITCHERS:
         broken = by_team[~by_team["PitcherId"].isin(drop_ids) & by_team["AllNA"]]
         print(f"\nall n/a with {MIN_PITCHES_DASHBOARD}+ pitches (upstream problem -- KEPT, not dropped): "
               f"{broken['PitcherId'].nunique()}")
         if not broken.empty:
-            print(broken[["Team", "Pitcher", "PitcherId", "Pitches2025"]].to_string(index=False))
+            print(broken[["Team", "Pitcher", "PitcherId", pitches_col]].to_string(index=False))
 
-    # keep only pitchers shown on some team (catches ids no roster has, e.g. salaries-file pitchers with no 2025 pitches)
+    # keep only pitchers shown on some team (catches ids no roster has, e.g. salaries-file pitchers with no pitches that season)
     shown_ids = set(roster["PitcherId"]) - drop_ids
     for path in DASHBOARD_FILES + [MISSING_REPORT_PATH]:
         if not path.exists():

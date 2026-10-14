@@ -14,9 +14,11 @@ from colors import (  # noqa: E402  (dashboard-local helper module)
     stat_color, stat_html,
 )
 from pitch_types import PITCH_TYPE_COLORS, PITCH_TYPE_ORDER, pitch_abbr, pitch_label, pitch_name  # noqa: E402
-from config import END_DATE, MIN_PITCHES_DASHBOARD, MIN_PITCHES_FOR_INCLUSION, MIN_PITCHES_PER_TYPE_TO_DISPLAY, MIN_PITCHES_TO_DISPLAY, SEASON, START_DATE  # noqa: E402
+from config import END_DATE, MIN_PITCHES_DASHBOARD, MIN_PITCHES_FOR_INCLUSION, MIN_PITCHES_PER_TYPE_TO_DISPLAY, MIN_PITCHES_TO_DISPLAY, START_DATE  # noqa: E402
+from season import data_dir, data_version, selected_season  # noqa: E402
 
-DATA_DIR = Path(__file__).parent / "data"
+SEASON = selected_season()           # the sidebar's Season selector (app.py); every label below follows it
+DATA_DIR = data_dir(SEASON)          # dashboard/data/<SEASON>/
 STUFF_PLUS_SUMMARY_PATH = DATA_DIR / "stuff_plus_pitch_types.csv"
 STUFF_PLUS_PITCHES_PATH = DATA_DIR / "stuff_plus_pitches.csv.gz"
 MOVEMENT_PITCHES_PATH = DATA_DIR / "movement_pitches.csv.gz"   # every pitch, for the movement chart
@@ -25,7 +27,7 @@ REPORT_PATH = DATA_DIR / "pitcher_report_data.csv"          # from analysis/expo
 SURPLUS_BY_YEAR_PATH = DATA_DIR / "surplus_by_year.csv"     # from analysis/export_report_data.py
 VELOCITY_PATH = DATA_DIR / "velocity_by_game.csv"           # from analysis/stuff_plus_proxy.py --team/--pitcher
 INJURY_STINTS_PATH = DATA_DIR / "injury_stints.csv"         # from analysis/export_report_data.py
-TEAM_PAID_PATH = DATA_DIR / "team_paid_2025.csv"           # from analysis/export_report_data.py
+TEAM_PAID_PATH = DATA_DIR / f"team_paid_{SEASON}.csv"      # from analysis/export_report_data.py
 EST_CONTRACT_TAG = "est. contract"   # default contract: not in the salaries file, league minimum, 1 yr
 NEXT_SEASON = SEASON + 1             # projected WAR and surplus start here
 # Value labels (cards, board columns and their hover help share these)
@@ -86,13 +88,8 @@ def player_headshot_url(mlbam_id: int) -> str:
 BASELINE_COLOR = "#8A8F98"    # the 100 reference line
 
 
-def data_version() -> float:
-    """Newest modification time in dashboard/data -- part of each loader's cache key, so a re-export is picked up."""
-    return max((f.stat().st_mtime for f in DATA_DIR.glob("*.csv*")), default=0.0)
-
-
 @st.cache_data
-def load_real_stuff_plus(data_version: float):
+def load_real_stuff_plus(data_version: float, season: int):
     if not STUFF_PLUS_SUMMARY_PATH.exists():
         return None, None
     summary = pd.read_csv(STUFF_PLUS_SUMMARY_PATH)
@@ -103,13 +100,13 @@ def load_real_stuff_plus(data_version: float):
 
 
 @st.cache_data
-def load_location_plus(data_version: float):
+def load_location_plus(data_version: float, season: int):
     """League-wide Location+ per pitcher x pitch type (+ overall), keyed on PitcherId. None until run."""
     return pd.read_csv(LOCATION_PLUS_PATH) if LOCATION_PLUS_PATH.exists() else None
 
 
 @st.cache_data
-def load_report_data(data_version: float):
+def load_report_data(data_version: float, season: int):
     """Risk-adjusted value + multi-year surplus, keyed on PitcherId. (None, None) until exported."""
     if not REPORT_PATH.exists():
         return None, None
@@ -119,7 +116,7 @@ def load_report_data(data_version: float):
 
 
 @st.cache_data
-def load_team_paid(data_version: float) -> pd.DataFrame:
+def load_team_paid(data_version: float, season: int) -> pd.DataFrame:
     """What each team paid a pitcher it shared (the salaries file's TeamPaid), one row per pitcher x team."""
     return pd.read_csv(TEAM_PAID_PATH) if TEAM_PAID_PATH.exists() else pd.DataFrame()
 
@@ -133,7 +130,7 @@ def contract_estimated(row) -> bool:
 
 
 @st.cache_data
-def load_velocity(data_version: float):
+def load_velocity(data_version: float, season: int):
     """Per-appearance primary fastball velocity, and IL stints (either may be empty)."""
     velocity = pd.read_csv(VELOCITY_PATH, parse_dates=["game_date"]) if VELOCITY_PATH.exists() else pd.DataFrame()
     stints = pd.read_csv(INJURY_STINTS_PATH, parse_dates=["StartDate", "EndDate"]) if INJURY_STINTS_PATH.exists() else pd.DataFrame()
@@ -410,7 +407,7 @@ STAT_HELP = {
     f"{SEASON} salary": f"What the pitcher is paid in {SEASON} in millions, where lower is better for the same production.",
     "Control left": (f"Seasons from {NEXT_SEASON} on that the team controls the pitcher before free agency (0 = free agent "
                      f"after {SEASON}), where more years of a good pitcher is better."),
-    "Pitches": "Pitches thrown in 2025, where more pitches means more reliable grades.",
+    "Pitches": f"Pitches thrown in {SEASON}, where more pitches means more reliable grades.",
     "Sample": "\"small\" means the sample is too small for the grade to be reliable yet (reliability under 0.5).",
     "Contract": "Notes on the contract, such as an estimated contract or a two-way player whose salary is not valued.",
     "Pitch mix": "Shown when the pitcher's most used pitch is not his best pitch by Stuff+, a sign he could add value by changing his mix.",
@@ -420,7 +417,7 @@ STUFF_COLOR = "#0072B2"      # team scatter points
 
 ARSENAL_HELP = {
     "Pitch": "The pitch type, with its standard abbreviation used in the charts.",
-    "Pitches": "How many times he threw this pitch in 2025.",
+    "Pitches": f"How many times he threw this pitch in {SEASON}.",
     "Velo (mph)": "Average release speed of this pitch.",
     "IVB (in)": "Induced vertical break: how much the pitch rises (+) or drops (-) compared to a spinless ball.",
     "HB (in, arm side +)": "Horizontal break toward the pitcher's arm side (+) or glove side (-).",
@@ -548,21 +545,53 @@ def stuff_location_scatter(staff: pd.DataFrame) -> go.Figure:
     return fig
 
 
-stuff_plus_summary, stuff_plus_pitches = load_real_stuff_plus(data_version())
-location_plus = load_location_plus(data_version())
-report_data, surplus_by_year = load_report_data(data_version())
-velocity_games, injury_stints = load_velocity(data_version())
-team_paid = load_team_paid(data_version())
+stuff_plus_summary, stuff_plus_pitches = load_real_stuff_plus(data_version(SEASON), SEASON)
+location_plus = load_location_plus(data_version(SEASON), SEASON)
+report_data, surplus_by_year = load_report_data(data_version(SEASON), SEASON)
+velocity_games, injury_stints = load_velocity(data_version(SEASON), SEASON)
+team_paid = load_team_paid(data_version(SEASON), SEASON)
 # league-wide qualified pool for every color; darker league-average gray for numbers on white
 pools = LeaguePools(report_data, neutral=NEUTRAL_COLOR if is_dark_theme() else NEUTRAL_TEXT_LIGHT)
 chart_pools = LeaguePools(report_data)   # chart fills keep the standard #BFBFBF midpoint
 
 st.sidebar.title("Filters")
 
-league_choice = st.sidebar.selectbox("League", list(TEAMS_BY_LEAGUE.keys()))
+ALL_MLB = "All MLB"   # first Team option: opens the League page
+
+
+def team_label(code: str, name: str) -> str:
+    return f"{name} ({code})"
+
+
+# "Open Pitcher Report" on the League page sets jump_to = (team code, pitcher) before switching here
+jump = st.session_state.pop("jump_to", None)
+if jump:
+    jump_team, jump_pitcher = jump
+    for league_name, teams in TEAMS_BY_LEAGUE.items():
+        for code, name in teams:
+            if code == jump_team:
+                st.session_state["league_choice"] = league_name
+                st.session_state["team_choice"] = team_label(code, name)
+    st.session_state["pitcher_choice"] = jump_pitcher
+
+league_choice = st.sidebar.selectbox("League", list(TEAMS_BY_LEAGUE.keys()), key="league_choice")
 team_options = TEAMS_BY_LEAGUE[league_choice]
-team_labels = [f"{name} ({code})" for code, name in team_options]
-team_label_choice = st.sidebar.selectbox("Team", team_labels)
+team_labels = [team_label(code, name) for code, name in team_options]
+if st.session_state.get("team_choice") not in team_labels:   # first run, or the league just changed
+    st.session_state["team_choice"] = team_labels[0]
+
+
+def on_team_change():
+    """Picking "All MLB" opens the League page; the Team box goes back to the team that was selected."""
+    if st.session_state["team_choice"] == ALL_MLB:
+        st.session_state["team_choice"] = st.session_state.get("last_team_choice", team_labels[0])
+        st.session_state["goto_league"] = True
+
+
+team_label_choice = st.sidebar.selectbox("Team", [ALL_MLB] + team_labels, key="team_choice", on_change=on_team_change)
+if st.session_state.pop("goto_league", False):
+    st.switch_page("league.py")
+st.session_state["last_team_choice"] = team_label_choice
 team_choice, team_name_choice = team_options[team_labels.index(team_label_choice)]
 
 st.sidebar.image(team_logo_url(team_choice), width=120)
@@ -574,7 +603,9 @@ team_stuff = (
 team_pitchers = sorted(team_stuff["Pitcher"].unique()) if not team_stuff.empty else []
 
 if team_pitchers:
-    pitcher_choice = st.sidebar.selectbox("Pitcher", team_pitchers)
+    if st.session_state.get("pitcher_choice") not in team_pitchers:
+        st.session_state["pitcher_choice"] = team_pitchers[0]
+    pitcher_choice = st.sidebar.selectbox("Pitcher", team_pitchers, key="pitcher_choice")
 else:
     pitcher_choice = None
     st.sidebar.caption(
@@ -625,7 +656,7 @@ with tab_report:
             if report_data is not None and (report_data["PitcherId"] == pitcher_id).any() else None
         )
 
-        st.markdown(legend_html(MIN_PITCHES_DASHBOARD), unsafe_allow_html=True)
+        st.markdown(legend_html(MIN_PITCHES_DASHBOARD, SEASON), unsafe_allow_html=True)
 
         def value_of(row, col):
             return None if row is None or col not in row or pd.isna(row[col]) else row[col]
@@ -705,7 +736,7 @@ with tab_report:
                 if not team_paid.empty else pd.DataFrame()
             if not paid.empty and pd.notna(paid["TeamPaid"].iloc[0]):
                 st.caption(f"{team_choice} paid ${paid['TeamPaid'].iloc[0] / 1e6:.2f}M of his "
-                           f"${paid['ListedSalary'].iloc[0] / 1e6:.2f}M 2025 salary (traded midseason); "
+                           f"${paid['ListedSalary'].iloc[0] / 1e6:.2f}M {SEASON} salary (traded midseason); "
                            "he is valued at the full contract.")
 
         pitcher_years = (
@@ -813,7 +844,7 @@ with tab_board:
         "Graded against the whole league, not just this staff."
     )
 
-    st.markdown(legend_html(MIN_PITCHES_DASHBOARD), unsafe_allow_html=True)
+    st.markdown(legend_html(MIN_PITCHES_DASHBOARD, SEASON), unsafe_allow_html=True)
 
     if not team_pitchers:
         st.info("No data loaded for this team yet.")

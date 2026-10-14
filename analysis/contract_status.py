@@ -23,7 +23,7 @@ import re
 
 import pandas as pd
 
-from config import SEASON
+from config import DEFAULT_SEASON, SEASON
 from analysis.injury_history import API_BASE, _get_json, resolve_pitchers
 from analysis.utils import CACHE_DIR, MLB_API_DIR, RESULTS_DIR
 
@@ -260,7 +260,7 @@ def run(pitcher: str | None = None, team: str | None = None, force_refresh: bool
             print(diff.to_string(index=False))
 
 
-DASHBOARD_REPORT_PATH = CACHE_DIR.parent / "dashboard" / "data" / "pitcher_report_data.csv"
+DASHBOARD_REPORT_PATH = CACHE_DIR.parent / "dashboard" / "data" / str(DEFAULT_SEASON) / "pitcher_report_data.csv"
 
 
 def validate_salaries(season: int) -> pd.DataFrame | None:

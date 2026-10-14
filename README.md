@@ -26,6 +26,7 @@ python -m analysis.stuff_plus_model_comparison   # optional: re-run the Stuff+ m
 python -m analysis.run_all --season 2023   # earlier seasons, league-wide (needed to calibrate WAR)
 python -m analysis.run_all --season 2024
 python -m analysis.run_all                 # 2025 for all 30 teams, incl. FIP-WAR + WAR calibration
+python -m analysis.run_all --season 2026 --dashboard   # 2026 dashboard: same full path, frozen WAR model projects 2027
 streamlit run dashboard/app.py             # open the dashboard
 ```
 
@@ -121,9 +122,11 @@ Salaries for all 30 teams (550 pitchers) were entered from saved FanGraphs Roste
 
 - **Team Value Board:** ranks a team's pitchers by surplus value.
 - **Pitcher Report:** Stuff+ and Location+ by pitch type, a movement chart, velocity by game with IL stints marked, and surplus value by year.
+- **League page:** every MLB pitcher ranked (Upside targets, Stuff+, Location+, FIP-WAR, projected WAR, surplus, volatility) and plotted Stuff+ vs. Location+, starters and relievers separately, with filters, CSV download and a jump to any pitcher's report.
+- **Season selector (2026 / 2025):** each season's files live in `dashboard/data/<season>/`. 2026 projections (2027 on) apply the WAR model frozen after 2025 (`results_frozen/war_model_2025.json`); it is not refit on 2026, which is held out to test it.
 - Small samples are tagged, and their colors fade toward gray.
 
-The public version runs on Streamlit Community Cloud. To update it, rerun `python -m analysis.run_all`, then commit and push `dashboard/data/`.
+The public version runs on Streamlit Community Cloud. To update it, rerun `python -m analysis.run_all` (2025) and `python -m analysis.run_all --season 2026 --dashboard` (2026), then commit and push `dashboard/data/`.
 
 ## Key findings so far
 

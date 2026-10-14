@@ -184,9 +184,9 @@ def stat_html(label: str, value_text: str, color: str | None, percentile: float 
     )
 
 
-def legend_html(min_pitches: int | None = None) -> str:
+def legend_html(min_pitches: int | None = None, season: int = 2025) -> str:
     """Gradient key: blue (worse) <- gray (league average) -> red (better), plus the dashboard's pitch minimum."""
-    minimum = (f'<div style="opacity:0.7;">Pitchers with fewer than {min_pitches} pitches in 2025 are not shown.</div>'
+    minimum = (f'<div style="opacity:0.7;">Pitchers with fewer than {min_pitches} pitches in {season} are not shown.</div>'
                if min_pitches else "")
     return (
         '<div style="max-width:520px;margin:4px 0 12px 0;font-size:0.8rem;">'

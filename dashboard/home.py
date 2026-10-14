@@ -11,21 +11,26 @@ import streamlit as st
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(1, str(Path(__file__).parent.parent))
 from colors import legend_html  # noqa: E402
+from season import FROZEN_MODEL_NOTE, SEASONS, data_dir, selected_season  # noqa: E402
 from pitch_types import PITCH_TYPE_ABBR, pitch_abbr, pitch_label, pitch_name  # noqa: E402
 from config import (  # noqa: E402
     ARB_PCT_OF_MARKET, COMMAND_METRIC, DISCOUNT_RATE, DOLLARS_PER_WAR, DOLLARS_PER_WAR_GROWTH, FIPR9_REGRESSION_IP,
     INJURY_ARM_STINTS_FOR_MAX_RISK, INJURY_DAYS_FOR_MAX_RISK, INJURY_LOOKBACK_SEASONS, INJURY_SHRINKAGE,
     LEAGUE_AVG_STARTER_WAR, LEAGUE_MIN_SALARY_BY_YEAR, MAX_CONTROL_YEARS, MIN_IP_FOR_RATE_MODEL, MIN_PITCHES_DASHBOARD,
     MIN_PITCHES_FOR_INCLUSION, MIN_PITCHES_PER_TYPE_FOR_SCALE, MIN_PITCHES_PER_TYPE_TO_DISPLAY, MIN_PITCHES_TO_DISPLAY,
-    REPLACEMENT_LEVEL_WAR, SEASON, STARTER_GS_SHARE, TOTAL_PITCHER_WAR, VOLATILITY_SHRINKAGE, WAR_MODEL,
+    DOLLARS_PER_WAR_YEAR, REPLACEMENT_LEVEL_WAR, STARTER_GS_SHARE, TOTAL_PITCHER_WAR, VOLATILITY_SHRINKAGE, WAR_MODEL,
     WAR_PER_TALENT_Z,
 )
 
+SEASON = selected_season()   # the sidebar's Season selector (app.py)
 NEXT_SEASON = SEASON + 1
 ROOT = Path(__file__).parent.parent
-DATA_DIR = Path(__file__).parent / "data"
-STABILIZATION_PATH = DATA_DIR / "stabilization.csv"   # copy of data/results/stabilization.csv
-WAR_MODEL_PATH = DATA_DIR / "war_model.json"           # chosen_model.json + final coefficients from analysis/war_calibration.py
+DATA_DIR = data_dir(SEASON)                            # dashboard/data/<SEASON>/
+STABILIZATION_PATH = DATA_DIR / "stabilization.csv"   # copy of data/results/stabilization.csv (2025 k, every season)
+WAR_MODEL_PATH = DATA_DIR / "war_model.json"           # chosen_model.json + final coefficients (2026: the frozen 2025 model)
+# $/WAR in a season = DOLLARS_PER_WAR x (1 + growth) ** (season - DOLLARS_PER_WAR_YEAR) (risk_adjusted_value.dollars_per_war)
+GROWTH_YEARS_NEXT = NEXT_SEASON - DOLLARS_PER_WAR_YEAR   # growth years in the first valued season
+GROWTH_YEARS_NOW = SEASON - DOLLARS_PER_WAR_YEAR
 
 # Metric names exactly as the Dashboard page shows them (dashboard/pitchers.py).
 # TODO: import these from dashboard/labels.py once the hover/names fix adds it.
@@ -84,6 +89,8 @@ st.title("Valuing Pitcher Volatility")
 st.markdown("#### Finding undervalued pitchers for low-payroll MLB teams")
 
 st.page_link("pitchers.py", label="Open the dashboard", icon=":material/arrow_forward:")
+st.caption(f"The dashboard covers the {' and '.join(map(str, sorted(SEASONS)))} seasons (Season selector in the "
+           f"sidebar). {FROZEN_MODEL_NOTE}")
 
 st.header("The question")
 st.markdown(
@@ -118,11 +125,15 @@ Pick a **league**, **team** and **pitcher** in the sidebar of the Dashboard page
   fastball velocity by game (with IL stints marked), and Stuff+ / Location+ for each pitch type.
 - **Team Value Board**: the team's whole staff ranked by multi-year surplus, plus two charts: Stuff+ vs. Location+
   (who has upside) and a value map (who is cheap production).
+- **League** page (or "All MLB" at the top of the Team list): every MLB pitcher ranked and plotted, starters and
+  relievers on separate tabs, with leaderboards like "Upside targets" and a jump to any pitcher's report.
+
+The **Season** selector at the top of the sidebar switches every page between seasons.
 """
 )
 
 st.header("Reading the colors")
-st.markdown(legend_html(MIN_PITCHES_DASHBOARD), unsafe_allow_html=True)
+st.markdown(legend_html(MIN_PITCHES_DASHBOARD, SEASON), unsafe_allow_html=True)
 st.markdown(
     f"""
 - **Red is good, blue is bad**, for every stat, even ones where a lower number is better (salary, volatility).
@@ -469,6 +480,9 @@ the old formula and a little better than "same as last year". It is cautious: th
 about 0.8 WAR lower than they tend to produce, because it pulls everyone toward average.
 """
     )
+    if SEASON > 2025:
+        st.info(f"{FROZEN_MODEL_NOTE} The {SEASON} season's features go into exactly the same coefficients to project "
+                f"{NEXT_SEASON}; {SEASON} is held out to test the model later.")
     keep_tex = (r"\text{Keep} = \left(1 - s_v \cdot \frac{\text{pct}}{100}\right)\left(1 - s_i \cdot \text{Risk}\right)")
     risk_adj_tex = (tx(PROJ_WAR_LABEL) + r" = \text{repl}_{\text{WAR}} + (\text{ProjectedWAR} - "
                     r"\text{repl}_{\text{WAR}}) \cdot \text{Keep}")
@@ -542,7 +556,7 @@ What the pitcher is worth minus what he's paid, added up over every year of team
 converted to today's dollars.
 
 - **Worth** = projected {NEXT_SEASON} WAR × ${DOLLARS_PER_WAR / 1e6:.1f}M per WAR, rising {DOLLARS_PER_WAR_GROWTH:.0%} a
-  year (${DOLLARS_PER_WAR * (1 + DOLLARS_PER_WAR_GROWTH) / 1e6:.2f}M in {NEXT_SEASON}).
+  year (${DOLLARS_PER_WAR * (1 + DOLLARS_PER_WAR_GROWTH) ** GROWTH_YEARS_NEXT / 1e6:.2f}M in {NEXT_SEASON}).
 - **Paid** = his guaranteed salary where one is listed; otherwise the league minimum during pre-arbitration years and a
   share of market value during arbitration years (never less than he made the year before).
 - Later years are discounted by **{DISCOUNT_RATE:.0%}** a year, because a win next year is worth less than a win now.
@@ -551,7 +565,7 @@ converted to today's dollars.
   number (not a zero) and is listed last on the Team Value Board.
 
 A big positive number means cheap production with years of control left, which is what a low-payroll team wants.
-The **{SEASON} surplus, actual** column looks back instead: his real {SEASON} FIP-WAR × ${DOLLARS_PER_WAR / 1e6:.1f}M
+The **{SEASON} surplus, actual** column looks back instead: his real {SEASON} FIP-WAR × ${DOLLARS_PER_WAR * (1 + DOLLARS_PER_WAR_GROWTH) ** GROWTH_YEARS_NOW / 1e6:.2f}M
 minus his {SEASON} salary.
 """
     )
@@ -561,9 +575,10 @@ minus his {SEASON} salary.
         (f"**Years counted.** T = years of team control left after {SEASON}, capped at {MAX_CONTROL_YEARS}. Year "
          f"t = 0 is {NEXT_SEASON}. T = 0 (free agent after {SEASON}) means no surplus.",
          rf"T = \min\left(\text{{years of control}} - 1,\ {MAX_CONTROL_YEARS}\right)"),
-        (f"**Price of a win** in year t, growing {growth:.0%} a year. The power is t + 1 because the base price is "
-         f"in {SEASON} money, so {NEXT_SEASON} already has one year of growth.",
-         rf"\$/\text{{WAR}}_t = {tex_num(DOLLARS_PER_WAR)} \times (1 + {growth})^{{t+1}}"),
+        (f"**Price of a win** in year t, growing {growth:.0%} a year. The base price is in {DOLLARS_PER_WAR_YEAR} "
+         f"money, so {NEXT_SEASON} (t = 0) already has {GROWTH_YEARS_NEXT} year{'s' if GROWTH_YEARS_NEXT != 1 else ''} "
+         f"of growth.",
+         rf"\$/\text{{WAR}}_t = {tex_num(DOLLARS_PER_WAR)} \times (1 + {growth})^{{t+{GROWTH_YEARS_NEXT}}}"),
         (f"**Worth.** WAR = {PROJ_WAR_LABEL}, held flat every year.",
          r"\text{Value}_t = \text{WAR} \times \$/\text{WAR}_t"),
         (f"**Paid**, the first rule that applies: (a) the guaranteed amount for that season, if his contract lists "
@@ -577,7 +592,8 @@ minus his {SEASON} salary.
          tx(SURPLUS_LABEL) + rf" = \sum_{{t=0}}^{{T-1}} \frac{{\text{{Value}}_t - \text{{Salary}}_t}}{{(1 + {discount})^t}}"),
         (f"**Look-back column** ({SURPLUS_ACTUAL_LABEL}): this season's real FIP-WAR at this season's price, "
          f"with no growth or discount.",
-         tx(SURPLUS_ACTUAL_LABEL) + rf" = \text{{FIP-WAR}}_{{{SEASON}}} \times {tex_num(DOLLARS_PER_WAR)} - "
+         tx(SURPLUS_ACTUAL_LABEL) + rf" = \text{{FIP-WAR}}_{{{SEASON}}} \times "
+         rf"{tex_num(round(DOLLARS_PER_WAR * (1 + DOLLARS_PER_WAR_GROWTH) ** GROWTH_YEARS_NOW))} - "
          rf"\text{{Salary}}_{{{SEASON}}}"),
     ])
     arb_years = [f"{i}" + (" (Super Two)" if i == 4 else "") for i in range(1, len(ARB_PCT_OF_MARKET) + 1)]

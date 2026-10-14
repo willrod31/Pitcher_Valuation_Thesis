@@ -62,9 +62,9 @@ from sklearn.preprocessing import StandardScaler
 
 from analysis.data_acquisition import END_DATE, START_DATE, pitchers_only, load_pitcher_season, load_season_monthly, load_team_roster_full_seasons, primary_team
 from analysis.stabilization import load_k, regress, reliability
-from analysis.utils import STUFF_PLUS_DIR, WRITES_DASHBOARD, scale_100, zscore_vs
+from analysis.utils import DASHBOARD_DATA_DIR, STUFF_PLUS_DIR, WRITES_DASHBOARD, scale_100, zscore_vs
 from config import (
-    MIN_PITCHES_FOR_INCLUSION, MIN_PITCHES_PER_TYPE_FOR_SCALE, MIN_PITCHES_PER_TYPE_TO_DISPLAY, MIN_PITCHES_TO_DISPLAY, SHOULDER_HEIGHT_FT,
+    DEFAULT_SEASON, SEASON, MIN_PITCHES_FOR_INCLUSION, MIN_PITCHES_PER_TYPE_FOR_SCALE, MIN_PITCHES_PER_TYPE_TO_DISPLAY, MIN_PITCHES_TO_DISPLAY, SHOULDER_HEIGHT_FT,
 )
 
 # League-wide, graded vs. the qualified pool (asymmetric_upside.py and the dashboard read these)
@@ -83,7 +83,7 @@ COMPARABILITY_PATH = STUFF_PLUS_DIR / "comparability.csv"
 SUMMARY_PATH = STUFF_PLUS_DIR / "stuff_plus_summary.parquet"
 PITCHES_PATH = STUFF_PLUS_DIR / "stuff_plus_pitches.parquet"
 
-DASHBOARD_DATA = Path(__file__).resolve().parent.parent / "dashboard" / "data"
+DASHBOARD_DATA = DASHBOARD_DATA_DIR   # dashboard/data/<SEASON>/
 DASHBOARD_PATH = DASHBOARD_DATA / "stuff_plus_pitch_types.csv"
 # The two per-pitch exports are gzipped: league-wide they're 30-60MB as plain CSV,
 # over the 25MB GitHub web limit (pandas reads/writes .csv.gz transparently).
@@ -669,9 +669,10 @@ def freeze_v2():
 def v2_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
     """(pitcher x type, pitcher) StuffPlus_v2 / StuffPlus_Scaled_v2 from the frozen v2 tables (blank if none)."""
     rename = {"StuffPlus": "StuffPlus_v2", "StuffPlus_Scaled": "StuffPlus_Scaled_v2"}
-    if not V2_PITCHER_PATH.exists():
-        return (pd.DataFrame(columns=["PitcherId", "PitchType", *rename.values()]),
-                pd.DataFrame(columns=["PitcherId", *rename.values()]))
+    if not V2_PITCHER_PATH.exists():   # e.g. 2026: v2 was never run for it; numeric blanks, not object columns
+        blank = {c: pd.Series(dtype=float) for c in rename.values()}
+        return (pd.DataFrame({"PitcherId": pd.Series(dtype="int64"), "PitchType": pd.Series(dtype=object), **blank}),
+                pd.DataFrame({"PitcherId": pd.Series(dtype="int64"), **blank}))
     summary = pd.read_parquet(V2_SUMMARY_PATH).drop_duplicates(["PitcherId", "PitchType"])
     pitcher = pd.read_parquet(V2_PITCHER_PATH).drop_duplicates("PitcherId")
     return (summary[["PitcherId", "PitchType", "StuffPlus", "StuffPlus_Scaled"]].rename(columns=rename),
@@ -700,7 +701,7 @@ def grade_league(force_refresh: bool = False, train_df: pd.DataFrame | None = No
     summary, pitcher = add_regressed(summary, pitcher, thrown)
     summary, pitcher = add_final(summary, pitcher)
 
-    if WRITES_DASHBOARD:
+    if SEASON == DEFAULT_SEASON:
         v1_type, v1_pitcher = v1_tables(train_df)
         summary = summary.merge(v1_type, on=["PitcherId", "PitchType"], how="left")
         pitcher = pitcher.merge(v1_pitcher, on="PitcherId", how="left")
@@ -801,7 +802,7 @@ def upsert_csv(rows: pd.DataFrame, path: Path, keys: list[str] | None = None):
     """Replace this run's `keys` (default PitcherId) in `path`, keep everyone else."""
     keys = keys or ["PitcherId"]
     if not WRITES_DASHBOARD and DASHBOARD_DATA in path.parents:
-        print(f"Not writing {path.name}: dashboard/data/ holds the default season only")
+        print(f"Not writing {path.name}: this season has no dashboard (run_all --season {SEASON} --dashboard)")
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():

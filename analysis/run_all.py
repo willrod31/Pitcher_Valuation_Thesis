@@ -5,6 +5,16 @@ the dashboard data and the missing-contract report.
     python -m analysis.run_all
     python -m analysis.run_all --teams PIT,LAD
     python -m analysis.run_all --season 2023     (same as THESIS_SEASON=2023)
+    python -m analysis.run_all --season 2026 --dashboard
+
+--season <YYYY> --dashboard runs the SAME full path as the default season
+(rosters, IL history, contracts from data/salaries_<YYYY>.csv, every module,
+the dashboard exports into dashboard/data/<YYYY>/ and
+data/missing_contract_report_<YYYY>.csv). The flag is explicit rather than
+inferred from a salaries file existing, so a league-only season can never
+write dashboard files by accident. A season after config.CALIBRATION_SEASONS
+gets its FIP-WAR and a projection from config.FROZEN_WAR_MODEL
+(war_calibration.project_frozen) -- the calibration is not rerun or refit.
 
 --season (any season but config.DEFAULT_SEASON) runs the league-wide metrics
 only -- Location+, volatility, injury history (config.INJURY_LOOKBACK_SEASONS
@@ -47,17 +57,19 @@ import time
 import traceback
 from pathlib import Path
 
-# --season has to be set before config is imported: every module reads config.SEASON at import time
+# --season / --dashboard have to be set before config is imported: every module reads them at import time
 for _n, _arg in enumerate(sys.argv):
     if _arg == "--season" and _n + 1 < len(sys.argv):
         os.environ["THESIS_SEASON"] = sys.argv[_n + 1]
     elif _arg.startswith("--season="):
         os.environ["THESIS_SEASON"] = _arg.split("=", 1)[1]
+    elif _arg == "--dashboard":
+        os.environ["THESIS_DASHBOARD"] = "1"
 
 import numpy as np
 import pandas as pd
 
-from config import DEFAULT_SEASON, END_DATE, MIN_PITCHES_TO_DISPLAY, SEASON, START_DATE, WAR_MODEL
+from config import CALIBRATION_SEASONS, DEFAULT_SEASON, END_DATE, MIN_PITCHES_TO_DISPLAY, SEASON, START_DATE, WAR_MODEL
 from analysis import (
     asymmetric_upside, contract_status, export_report_data, fip_war, injury_history, location_plus_proxy,
     risk_adjusted_value, stuff_plus_proxy, volatility_discount, war_calibration,
@@ -65,7 +77,7 @@ from analysis import (
 from analysis.data_acquisition import (
     PITCHER_POSITION_CODES, fetch_positions, load_season_monthly, seed_team_caches_from_league, team_roster_ids,
 )
-from analysis.utils import RESULTS_DIR, STATCAST_TEAM_DIR
+from analysis.utils import RESULTS_DIR, STATCAST_TEAM_DIR, WRITES_DASHBOARD
 
 # Statcast team codes (AZ, not ARI), same list as dashboard/app.py
 TEAMS = [
@@ -75,7 +87,8 @@ TEAMS = [
 TEAM_ALIASES = {"ARI": "AZ"}   # FanGraphs / salaries file code -> Statcast
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 REPORT_PATH = export_report_data.MISSING_REPORT_PATH
-REPORT_COLUMNS = ["PitcherId", "Pitcher", "Team", "Problem", "Fix", "ContractStatus_est", "EstYearsControl", "Pitches2025"]
+PITCHES_COLUMN = f"Pitches{SEASON}"
+REPORT_COLUMNS = ["PitcherId", "Pitcher", "Team", "Problem", "Fix", "ContractStatus_est", "EstYearsControl", PITCHES_COLUMN]
 PROBLEM_DEFAULT = "not in salaries file"
 PROBLEM_MISMATCH = "status mismatch (estimate says arb, defaulted to FA)"
 PROBLEM_NO_SALARY = "no salary (not in salaries file, no debut date)"
@@ -144,7 +157,7 @@ def build_missing_report(pitches_by_id: pd.Series) -> tuple[pd.DataFrame, pd.Dat
     cols = ["PitcherId", "Salary", "SalarySource", "ControlSource", "StatusMismatch", "ContractEstimated",
             "ContractValued", "ContractStatus_est", "EstYearsControl"]
     rows = roster.merge(resolved[cols], on="PitcherId", how="left")
-    rows["Pitches2025"] = rows["PitcherId"].map(pitches_by_id).fillna(0).astype(int)
+    rows[PITCHES_COLUMN] = rows["PitcherId"].map(pitches_by_id).fillna(0).astype(int)
 
     valued = rows["ContractValued"]
     problems = pd.DataFrame({
@@ -156,7 +169,7 @@ def build_missing_report(pitches_by_id: pd.Series) -> tuple[pd.DataFrame, pd.Dat
     rows["Problem"] = problems.apply(lambda r: "; ".join(r.index[r]), axis=1)
     rows["Fix"] = np.where(problems[[PROBLEM_NO_SALARY, PROBLEM_NO_CONTROL]].any(axis=1), FIX_NEEDS_DATA,
                            np.where(rows["ContractEstimated"], FIX_DEFAULT, ""))
-    report = rows[rows["Fix"] != ""].sort_values(["Pitches2025", "Team"], ascending=[False, True])
+    report = rows[rows["Fix"] != ""].sort_values([PITCHES_COLUMN, "Team"], ascending=[False, True])
     return report[REPORT_COLUMNS].reset_index(drop=True), rows
 
 
@@ -188,7 +201,7 @@ def print_report_summary(report: pd.DataFrame, rows: pd.DataFrame, excluded: pd.
         fill_value=0)
     counts["excluded non-pitchers"] = excluded.groupby("Team").size().reindex(teams, fill_value=0)
     counts.loc["TOTAL"] = counts.sum()
-    print("\n── 2025 contract source per team (dashboard pitchers; a traded pitcher counts for each team) ──")
+    print(f"\n── {SEASON} contract source per team (dashboard pitchers; a traded pitcher counts for each team) ──")
     print(counts.to_string())
     by_fix = report["Fix"].value_counts()
     print(f"\n{REPORT_PATH}: {len(report)} pitcher x team rows ({report['PitcherId'].nunique()} pitchers): "
@@ -233,10 +246,14 @@ def run(teams: list[str]):
     volatility = runner.step("league", "volatility_discount", volatility_discount.grade_league)
     if volatility is not None:
         runner.step("league", "volatility regressions", volatility_discount.run_regressions, volatility[1])
-    if WAR_MODEL == "calibrated":
+    if WAR_MODEL == "calibrated" and SEASON in CALIBRATION_SEASONS:
         # needs data/results/season_<YYYY>/ for the earlier calibration seasons (run_all --season <YYYY>)
         runner.step("league", "fip_war", fip_war.run)
         runner.step("league", "war_calibration", war_calibration.run)
+    elif WAR_MODEL == "calibrated":
+        # past the calibration seasons: this season's FIP-WAR, then the FROZEN model projects SEASON + 1 (no fitting)
+        runner.step("league", "fip_war", fip_war.run, [SEASON])
+        runner.step("league", "war_calibration (frozen)", war_calibration.project_frozen, SEASON)
     value = runner.step("league", "risk_adjusted_value", risk_adjusted_value.grade_league)
 
     print("\n── 4. Team views + dashboard exports, per team ──")
@@ -256,6 +273,8 @@ def run(teams: list[str]):
             runner.step(team, "risk_adjusted_value", risk_adjusted_value.show, value, team)
 
     print("\n── 5. Dashboard export + missing-contract report ──")
+    # current_team.csv first, so export_report_data's dashboard minimum filters it like every other file
+    runner.step("league", "current team", export_report_data.save_current_team, league)
     runner.step("league", "export_report_data", export_report_data.run)
     pitches_by_id = league.groupby("pitcher").size()
     league = league_pitches = None   # free memory before the report
@@ -271,7 +290,7 @@ def run(teams: list[str]):
         print(f"\n── {len(needs)} row(s) still marked '{FIX_NEEDS_DATA}' ──")
         print(needs.to_string(index=False) if not needs.empty else "none")
         default = report[report["Fix"] == FIX_DEFAULT].drop_duplicates("PitcherId")
-        print(f"\n── Top 20 pitchers by 2025 pitches on the default contract ({FIX_DEFAULT}) ──")
+        print(f"\n── Top 20 pitchers by {SEASON} pitches on the default contract ({FIX_DEFAULT}) ──")
         print(default.head(20).to_string(index=False))
     print_file_sizes()
 
@@ -331,8 +350,10 @@ if __name__ == "__main__":
     parser.add_argument("--teams", default=None, help="Comma-separated Statcast team codes, e.g. --teams PIT,LAD (default: all 30)")
     parser.add_argument("--season", type=int, default=None,
                         help=f"Grade another season league-wide (default {DEFAULT_SEASON}); same as THESIS_SEASON=<YYYY>")
+    parser.add_argument("--dashboard", action="store_true",
+                        help="With --season: run the full dashboard path for that season (writes dashboard/data/<YYYY>/)")
     args = parser.parse_args()
-    if SEASON != DEFAULT_SEASON:
+    if not WRITES_DASHBOARD:
         sys.exit(1 if run_season() else 0)
     selected = [t.strip().upper() for t in args.teams.split(",")] if args.teams else TEAMS
     selected = [TEAM_ALIASES.get(t, t) for t in selected]

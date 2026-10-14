@@ -33,17 +33,26 @@ league values and the pitcher's own last-season GS/G and IP/G.
 Backtest (for the breakout view): each pair projected out of sample by the
 model fitted on the OTHER pair.
 
+Frozen model (project_frozen): a season after the calibration seasons (2026)
+is never added as a pair and nothing is refit, retuned or reselected on it.
+Its next-season projection applies the exact coefficients in
+config.FROZEN_WAR_MODEL (results_frozen/war_model_2025.json: the chosen rate
+model and both playing-time models) to that season's features, the same way
+war_projection does, and writes projections_<season + 1>.csv.
+
     python -m analysis.war_calibration
+    python -m analysis.war_calibration --frozen 2026
 """
 import argparse
 import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
 from config import (
-    CALIBRATION_SEASONS, FIPR9_REGRESSION_IP, MIN_IP_FOR_RATE_MODEL, MIN_PITCHES_TO_DISPLAY, STARTER_GS_SHARE,
+    CALIBRATION_SEASONS, FIPR9_REGRESSION_IP, FROZEN_WAR_MODEL, MIN_IP_FOR_RATE_MODEL, MIN_PITCHES_TO_DISPLAY, STARTER_GS_SHARE,
 )
 from analysis.fip_war import fip_war_from_rate, load_fip_war, load_league_values
 from analysis.injury_history import API_BASE, _get_json
@@ -137,16 +146,19 @@ def season_features(season: int) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
+def add_age(df: pd.DataFrame, season: int) -> pd.DataFrame:
+    """Age on July 1 of season + 1 (MLB Stats API birth dates, cached)."""
+    births = pd.to_datetime(pd.Series(fetch_birth_dates(df["PitcherId"])))
+    birth = df["PitcherId"].map(births)
+    return df.assign(Age=((pd.Timestamp(f"{season + 1}-07-01") - birth).dt.days / 365.25).round(2))
+
+
 def build_rows(seasons: list[int] | None = None) -> pd.DataFrame:
     """Every season's feature rows with next-season targets (blank for the last season: nothing to target yet)."""
     seasons = seasons or CALIBRATION_SEASONS
     frames = []
     for season in seasons:
-        df = season_features(season)
-        births = pd.to_datetime(pd.Series(fetch_birth_dates(df["PitcherId"])))
-        on_july_1 = pd.Timestamp(f"{season + 1}-07-01")
-        birth = df["PitcherId"].map(births)
-        df["Age"] = ((on_july_1 - birth).dt.days / 365.25).round(2)
+        df = add_age(season_features(season), season)
         df["NextSeason"] = season + 1
         if season + 1 in seasons:
             nxt = load_fip_war(season + 1).set_index("PitcherId")
@@ -345,6 +357,53 @@ def print_backtest(bt: pd.DataFrame):
               .head(10)[cols].to_string(index=False) if len(misses) else "none")
 
 
+# ── Frozen model (seasons after the calibration seasons) ──────────────────────
+
+def frozen_model() -> dict:
+    """config.FROZEN_WAR_MODEL: chosen_rate_model, rate_features, pt_features and the final coefficients."""
+    return json.loads((Path(__file__).resolve().parent.parent / FROZEN_WAR_MODEL).read_text())
+
+
+def linear(coefs: dict, rows: pd.DataFrame, features: list[str]) -> pd.Series:
+    """const + sum(coef x feature) with the frozen coefficients; blank where a feature is blank."""
+    out = pd.Series(coefs["const"], index=rows.index, dtype=float)
+    for f in features:
+        out = out + coefs[f] * rows[f].astype(float)
+    return out
+
+
+def project_frozen(season: int) -> pd.DataFrame:
+    """projections_<season + 1>.csv from `season`'s features and the frozen model -- nothing is fit.
+
+    Same steps as war_projection(): rate = the chosen rate model; innings =
+    the playing-time model for the pitcher's role, clipped at 0; WAR = the
+    FIP-WAR formula with `season`'s league values and his own GS/G and IP/G.
+    """
+    meta = frozen_model()
+    rate_name, rate_features, pt_features = meta["chosen_rate_model"], meta["rate_features"], meta["pt_features"]
+    rows = add_age(season_features(season), season)
+    out = rows.copy()
+    complete = rows.dropna(subset=rate_features)
+    out["ProjectedFIPR9"] = linear(meta["coefficients"][rate_name], complete, rate_features).reindex(rows.index)
+    out["ProjectedIP"] = np.nan
+    for role, data in rows.groupby("Role"):
+        data = data.dropna(subset=pt_features)
+        out.loc[data.index, "ProjectedIP"] = linear(meta["coefficients"][f"PT_{role}"], data, pt_features).clip(lower=0)
+    out["ProjectedWAR"] = project_war(rows, out["ProjectedFIPR9"], out["ProjectedIP"], load_league_values(season))
+    projected_season = season + 1
+    projections = out[["PitcherId", "Pitcher", "Team", "Role", "Age", "Season", "IP", "G", "GS", "GSShare", "FIPR9_raw",
+                       "FIPR9_reg", "KminusBBPct", "WAR_t", "StuffPlus", "LocationPlus", "UpsideIndex",
+                       "VolatilityScore_Reg", "InjuryRiskScore", "LegacyProjectedWAR",
+                       "ProjectedFIPR9", "ProjectedIP", "ProjectedWAR"]].rename(columns={"WAR_t": "FIPWAR"})
+    projections.insert(6, "ProjectedSeason", projected_season)
+    projections = projections.sort_values("ProjectedWAR", ascending=False)
+    projections.to_csv(projections_path(projected_season), index=False)
+    print(f"Projected {projected_season} from {season} with the FROZEN model {FROZEN_WAR_MODEL} "
+          f"({rate_name} x playing time, fit on {meta['final_fit']}; not refit on {season}): "
+          f"{len(projections)} pitchers -> {projections_path(projected_season)}")
+    return projections
+
+
 # ── Run ──────────────────────────────────────────────────────────────────────
 
 def print_comparison(comparison: pd.DataFrame):
@@ -437,5 +496,8 @@ def run(seasons: list[int] | None = None):
 
 
 if __name__ == "__main__":
-    argparse.ArgumentParser(description="Calibrate the WAR projection against FIP-WAR (rate x playing time).").parse_args()
-    run()
+    parser = argparse.ArgumentParser(description="Calibrate the WAR projection against FIP-WAR (rate x playing time).")
+    parser.add_argument("--frozen", type=int, default=None, metavar="SEASON",
+                        help="Only project SEASON + 1 with config.FROZEN_WAR_MODEL (no fitting), e.g. --frozen 2026")
+    args = parser.parse_args()
+    project_frozen(args.frozen) if args.frozen else run()
