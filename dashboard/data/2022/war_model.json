@@ -1,0 +1,53 @@
+{
+ "chosen_rate_model": "R3",
+ "rate_features": [
+  "FIPR9_reg",
+  "KminusBBPct",
+  "StuffPlus",
+  "LocationPlus",
+  "Starter"
+ ],
+ "pt_features": [
+  "IP",
+  "Age",
+  "InjuryRiskScore",
+  "VolatilityScore_Reg"
+ ],
+ "risk_in_rate_model": false,
+ "risk_in_playing_time_model": true,
+ "final_fit": "2023->2024",
+ "train_pair": "2023->2024",
+ "n_rate": 480,
+ "n_playing_time": {
+  "reliever": 471,
+  "starter": 235
+ },
+ "coefficients": {
+  "R3": {
+   "const": 5.61934550005941,
+   "FIPR9_reg": 0.36185873170535504,
+   "KminusBBPct": -0.9570019050218317,
+   "StuffPlus": -0.020943481497547267,
+   "LocationPlus": -0.006903114413704176,
+   "Starter": 0.08467442074114782
+  },
+  "PT_reliever": {
+   "const": 32.265737602029844,
+   "IP": 0.6994258146934624,
+   "Age": -0.9657858081609666,
+   "InjuryRiskScore": 5.338694763316004,
+   "VolatilityScore_Reg": -0.20385016035167194
+  },
+  "PT_starter": {
+   "const": 81.38654320571257,
+   "IP": 0.622619535878054,
+   "Age": -2.1394337824476457,
+   "InjuryRiskScore": 4.099375005150266,
+   "VolatilityScore_Reg": -2.8952214687173106
+  }
+ },
+ "projected_season": 2023,
+ "feature_season": 2022,
+ "out_of_sample": true,
+ "note": "Model trained on 2023->2024 only (never trained on 2023 results: 2023 stats were only inputs, its answers were 2024)"
+}

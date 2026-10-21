@@ -16,7 +16,7 @@ from pathlib import Path
 
 import streamlit as st
 
-SEASONS = [2026, 2025, 2024, 2023]   # newest first; the first one is the default. 2022 returns once its export is rerun
+SEASONS = [2026, 2025, 2024, 2023, 2022]   # newest first; the first one is the default
 DATA_ROOT = Path(__file__).parent / "data"
 SEASON_KEY = "season"
 # Widget state can be reset when st.switch_page changes pages, so the choice is mirrored in a plain key

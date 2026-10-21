@@ -1,0 +1,129 @@
+PitcherId,Pitcher,Team,Problem,Fix,ContractStatus_est,EstYearsControl,Pitches2022
+656605,Mitch Keller,PIT,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,2629
+664353,José Urquidy,HOU,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,2596
+502179,Paolo Espino,WSH,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,1839
+669060,Bryse Wilson,PIT,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,1769
+660761,José Suarez,LAA,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,1762
+592716,Adrian Sampson,CHC,not in salaries file,default min,FA-eligible,0,1542
+541640,Erasmo Ramírez,WSH,not in salaries file,default min,FA-eligible,0,1180
+656970,Devin Smeltzer,MIN,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,1129
+608328,Chase De Jong,PIT,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,1121
+642545,Jaime Barría,LAA,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,1108
+656354,Austin Davis,BOS,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,1106
+656354,Austin Davis,MIN,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,1106
+595881,Tyler Beede,PIT,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,1070
+595881,Tyler Beede,SF,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,1070
+542888,Shawn Armstrong,MIA,not in salaries file,default min,FA-eligible,0,1054
+542888,Shawn Armstrong,TB,not in salaries file,default min,FA-eligible,0,1054
+571948,Hoby Milner,MIL,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,1031
+623474,Jimmy Herget,LAA,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,996
+600921,Andrés Machado,WSH,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,970
+571479,Andrew Bellatti,PHI,not in salaries file,default min,FA-eligible,0,966
+621363,Colin Poche,TB,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,954
+642701,Dennis Santana,TEX,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,951
+606303,Joel Payamps,ATH,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,949
+606303,Joel Payamps,KC,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,949
+672335,Cionel Pérez,BAL,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,895
+623451,Jackson Stephens,ATL,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,887
+670036,Matt Festa,SEA,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,835
+669270,Joel Kuhnel,CIN,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,830
+643410,Mark Leiter,CHC,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,827
+660853,Enyel De Los Santos,CLE,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,804
+643493,Austin Pruitt,ATH,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,787
+594580,Sam Moll,ATH,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,733
+644364,Víctor Arano,WSH,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,694
+544365,Manny Banuelos,NYY,not in salaries file,default min,FA-eligible,0,691
+544365,Manny Banuelos,PIT,not in salaries file,default min,FA-eligible,0,691
+641793,Zack Littell,SF,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,691
+596071,Dillon Peters,PIT,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,680
+650671,José Quijada,LAA,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,673
+621389,Ty Blach,COL,not in salaries file,default min,FA-eligible,0,667
+641501,Tyler Danish,BOS,not in salaries file,default min,FA-eligible,0,661
+664139,Ian Gibaut,CIN,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,627
+664139,Ian Gibaut,CLE,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,627
+606625,Reyes Moronta,AZ,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,599
+606625,Reyes Moronta,LAD,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,599
+607455,Anthony Banda,NYY,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,592
+607455,Anthony Banda,PIT,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,592
+607455,Anthony Banda,TOR,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,592
+640451,Hunter Harvey,WSH,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,564
+656686,Corbin Martin,AZ,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,486
+502624,Chase Anderson,CIN,not in salaries file,default min,FA-eligible,0,473
+502624,Chase Anderson,DET,not in salaries file,default min,FA-eligible,0,473
+446321,Ross Detwiler,CIN,not in salaries file,default min,FA-eligible,0,465
+656464,Kevin Ginkel,AZ,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,460
+665001,Trevor Kelley,MIL,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,460
+622075,Yency Almonte,LAD,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,459
+664092,Sean Poppen,AZ,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,457
+657770,Eric Stout,CHC,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,449
+657770,Eric Stout,PIT,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,449
+657053,Touki Toussaint,LAA,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,431
+622250,Josh Sborz,TEX,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,419
+642028,Josh Rogers,WSH,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,419
+622065,Alex Young,CLE,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,405
+622065,Alex Young,SF,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,405
+543238,Anthony Gose,CLE,not in salaries file,default min,FA-eligible,0,392
+656257,Jeff Brigham,MIA,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,379
+656803,James Norwood,PHI,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,368
+488984,Tommy Hunter,NYM,not in salaries file,default min,FA-eligible,0,349
+671790,Ronald Bolaños,KC,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,332
+668665,Stephen Nogosek,NYM,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,330
+642770,Javy Guerra,SD,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,318
+642770,Javy Guerra,TB,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,318
+592473,Adam Kolarek,ATH,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,317
+592346,Chi Chi González,MIL,not in salaries file,default min,FA-eligible,0,303
+592346,Chi Chi González,MIN,not in salaries file,default min,FA-eligible,0,303
+642100,Gabe Speier,KC,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,298
+622786,Jesús Tinoco,TEX,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,298
+571882,Derek Law,CIN,not in salaries file,default min,FA-eligible,0,294
+571882,Derek Law,DET,not in salaries file,default min,FA-eligible,0,294
+570488,Phillips Valdéz,BOS,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,286
+608652,Luke Farrell,CHC,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,285
+608652,Luke Farrell,CIN,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,285
+606131,Luis Perdomo,MIL,not in salaries file,default min,FA-eligible,0,285
+667498,Robert Dugger,CIN,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,284
+667498,Robert Dugger,TB,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,284
+572125,Sam Selman,ATH,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,273
+658551,Junior Fernández,STL,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,261
+605463,Tayler Scott,SD,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,255
+642231,Jimmy Yacabonis,MIA,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,254
+642231,Jimmy Yacabonis,TB,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,254
+643615,T. J. Zeuch,CIN,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,250
+596271,Casey Lawrence,TOR,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,250
+664042,Travis Lakins,BAL,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,242
+641871,Keynan Middleton,AZ,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,1,239
+572703,Luke Bard,NYY,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,239
+572703,Luke Bard,TB,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,239
+543548,Tommy Milone,SEA,not in salaries file,default min,FA-eligible,0,238
+650530,Bryan Garcia,DET,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,228
+664054,Cody Stashak,MIN,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,227
+663531,Logan Allen,BAL,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,223
+663531,Logan Allen,CLE,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,223
+656887,Sean Reid-Foley,NYM,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,222
+607229,Robert Gsellman,CHC,not in salaries file,default min,FA-eligible,0,207
+661255,Yoan López,NYM,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,190
+606965,Chris Devenski,AZ,not in salaries file,default min,FA-eligible,0,185
+606965,Chris Devenski,PHI,not in salaries file,default min,FA-eligible,0,185
+518397,Scott Alexander,SF,not in salaries file,default min,FA-eligible,0,184
+650382,Darwinzon Hernández,BOS,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,181
+573668,Juan Minaya,MIN,not in salaries file,default min,FA-eligible,0,174
+592848,Zack Weiss,LAA,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,173
+657585,Reed Garrett,WSH,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,163
+643230,Steven Brault,CHC,not in salaries file,default min,FA-eligible,0,156
+607457,Kyle Barraclough,LAA,not in salaries file,default min,FA-eligible,0,152
+621114,Ryan Burr,CWS,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,2,149
+660623,Huascar Ynoa,ATL,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,147
+592169,Austin Brice,PIT,not in salaries file,default min,FA-eligible,0,138
+670329,Rico Garcia,BAL,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,136
+641853,David Mckay,ATH,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,135
+641853,David Mckay,NYY,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,135
+641853,David Mckay,TB,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,135
+607391,Chris Mazza,TB,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,135
+543901,Ryan Weber,NYY,not in salaries file,default min,FA-eligible,0,127
+595191,Jerad Eickhoff,PIT,not in salaries file,default min,FA-eligible,0,121
+670426,Phillip Diehl,CIN,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,120
+596043,Daniel Mengden,KC,not in salaries file,default min,FA-eligible,0,119
+527055,Arodys Vizcaíno,KC,not in salaries file,default min,FA-eligible,0,115
+606273,Roenis Elías,SEA,not in salaries file,default min,FA-eligible,0,114
+595939,Chris Ellis,BAL,"not in salaries file; status mismatch (estimate says arb, defaulted to FA)",default min,arb,3,112
+607359,Spencer Patton,TEX,not in salaries file,default min,FA-eligible,0,111
