@@ -1,0 +1,457 @@
+PitcherId,Pitcher,Team,Season,Salary,AAV,ContractStatus,YearsControl,PreArbYearsLeft,ArbYearsLeft,GuaranteedFuture,TeamPaid2022,Origin,Source,Notes,FanGraphsId,ServiceTime
+518516,Madison Bumgarner,ARI,2022,23000000,17000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 ARI payroll (saved page, accessed 2026-10-21)","5 yr, $85M (2020-24)",5524,11.127
+453343,Mark Melancon,ARI,2022,6000000,7000000,guaranteed,2,0,0,2023:6000000,,FanGraphs,"FanGraphs RosterResource 2022 ARI payroll (saved page, accessed 2026-10-21)","2 yr, $14M (2022-23)",4264,11.098
+518876,Merrill Kelly,ARI,2022,5250000,5250000,guaranteed,4,0,0,2023:8500000;2024:8500000;2025:7000000,,FanGraphs,"FanGraphs RosterResource 2022 ARI payroll (saved page, accessed 2026-10-21)","4 yr, $14.5M (2019-22; 2021-22 club options exercised); 2 yr, $18M (2023-24), 2025 club option",11156,3.000
+453178,Ian Kennedy,ARI,2022,4500000,4750000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 ARI payroll (saved page, accessed 2026-10-21)","1 yr, $4.75M (2022)",6986,12.124
+605200,Zach Davies,ARI,2022,1500000,1750000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 ARI payroll (saved page, accessed 2026-10-21)","1 yr, $1.75M (2022)",13183,6.020
+592761,Caleb Smith,ARI,2022,2000000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 ARI payroll (saved page, accessed 2026-10-21)","1 yr, $2M (2022)",14875,4.078
+668678,Zac Gallen,ARI,2022,745600,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 ARI payroll (saved page, accessed 2026-10-21)","1 yr, $745.6k (2022)",19291,2.100
+573009,Joe Mantiply,ARI,2022,717000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 ARI payroll (saved page, accessed 2026-10-21)","1 yr, $717k (2022)",14857,1.049
+643316,Paul Fry,ARI,2022,850000,850000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 ARI payroll (saved page, accessed 2026-10-21)","1 yr, $850k (2022); no longer on 40-man / in org",15832,3.075
+605525,J.B. Wendelken,ARI,2022,835000,835000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 ARI payroll (saved page, accessed 2026-10-21)","1 yr, $835k (2022); no longer on 40-man / in org",14506,3.028
+424144,Oliver Pérez,ARI,2022,93407,93407,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 ARI payroll (saved page, accessed 2026-10-21)","1 yr, $93.407k (2022); $850K, prorated; no longer on 40-man / in org",1514,16.125
+598287,Noé Ramirez,ARI,2022,1250000,1250000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 ARI payroll (saved page, accessed 2026-10-21)","1 yr, $1.25M (2022); no longer on 40-man / in org",12800,4.083
+500610,Deolis Guerra,ATH,2022,815000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 ATH payroll (saved page, accessed 2026-10-21)","1 yr, $815k (2022)",8410,3.071
+621112,Paul Blackburn,ATH,2022,710000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 ATH payroll (saved page, accessed 2026-10-21)","1 yr, $710k (2022)",14739,2.018
+608344,Cole Irvin,ATH,2022,705000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 ATH payroll (saved page, accessed 2026-10-21)","1 yr, $705k (2022)",19244,1.120
+621076,James Kaprielian,ATH,2022,705000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 ATH payroll (saved page, accessed 2026-10-21)","1 yr, $705k (2022)",18331,1.004
+640462,A.J. Puk,ATH,2022,705000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 ATH payroll (saved page, accessed 2026-10-21)","1 yr, $705k (2022)",19343,1.124
+666204,Dany Jiménez,ATH,2022,700000,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 ATH payroll (saved page, accessed 2026-10-21)","1 yr, $700k (2022)",21170,0.031
+518748,Justin Grimm,ATH,2022,224176,224176,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 ATH payroll (saved page, accessed 2026-10-21)","1 yr, $224.176k (2022); $800K, prorated; no longer on 40-man / in org",11720,6.050
+450203,Charlie Morton,ATL,2022,20000000,20000000,guaranteed,3,0,0,2023:20000000;2024:20000000,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","1 yr, $20M (2022); 1 yr, $20M (2023), 2024 club option",4676,13.010
+445276,Kenley Jansen,ATL,2022,16000000,16000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","1 yr, $16M (2022)",3096,11.073
+628452,Raisel Iglesias,ATL,2022,10000000,10000000,guaranteed,4,0,0,2023:16000000;2024:16000000;2025:16000000,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","4 yr, $58M (2022-25)",17130,6.154
+543521,Collin McHugh,ATL,2022,4000000,5000000,guaranteed,3,0,0,2023:5000000;2024:6000000,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","2 yr, $10M (2022-23)",7531,7.085
+543606,Jake Odorizzi,ATL,2022,8000000,4625000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","3 yr, $29.5M (2021-23), 2023 player option",6397,8.042
+489446,Kirby Yates,ATL,2022,1000000,4125000,guaranteed,3,0,0,2023:6000000;2024:5750000,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","2 yr, $8.25M (2022-23)",9073,7.021
+503285,Darren O'Day,ATL,2022,1000000,1000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","1 yr, $1M (2022)",3321,13.103
+445926,Jesse Chavez,ATL,2022,750000,750000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","1 yr, $750k (2022)",5448,11.038
+675911,Spencer Strider,ATL,2022,710000,710000,guaranteed,7,1,0,2023:1000000;2024:1000000;2025:4000000;2026:20000000;2027:22000000;2028:22000000,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","1 yr, $710k (2022); 6 yr, $75M (2023-28), 2029 club option; control may run past 2028",27498,0.003
+592426,Luke Jackson,ATL,2022,3600000,,arb,1,0,1,,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","1 yr, $3.6M (2022)",11752,5.019
+608331,Max Fried,ATL,2022,6850000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","1 yr, $6.85M (2022)",13743,3.148
+647336,Michael Soroka,ATL,2022,2800000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","1 yr, $2.8M (2022)",18383,3.146
+621345,A.J. Minter,ATL,2022,2200000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","1 yr, $2.2M (2022)",18655,3.154
+554431,Tyler Matzek,ATL,2022,1400000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","1 yr, $1.4M (2022)",10058,3.019
+657140,Kyle Wright,ATL,2022,720000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","1 yr, $720k (2022)",19665,1.062
+666120,Ian Anderson,ATL,2022,710000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","1 yr, $710k (2022)",19951,1.094
+592804,Tyler Thornburg,ATL,2022,900000,900000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 ATL payroll (saved page, accessed 2026-10-21)","1 yr, $900k (2022); no longer on 40-man / in org",10688,6.115
+543475,Jordan Lyles,BAL,2022,6000000,7000000,guaranteed,2,0,0,2023:11000000,,FanGraphs,"FanGraphs RosterResource 2022 BAL payroll (saved page, accessed 2026-10-21)","1 yr, $7M (2022)",7593,10.002
+607644,John Means,BAL,2022,2950000,2962500,guaranteed,3,0,1,2023:2975000,,FanGraphs,"FanGraphs RosterResource 2022 BAL payroll (saved page, accessed 2026-10-21)","2 yr, $5.925M (2022-23)",16269,3.007
+608723,Austin Voth,BAL,2022,875000,,arb,4,0,4,,,FanGraphs,"FanGraphs RosterResource 2022 BAL payroll (saved page, accessed 2026-10-21)","1 yr, $875k (2022)",15047,2.127
+622253,Dillon Tate,BAL,2022,711500,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 BAL payroll (saved page, accessed 2026-10-21)","1 yr, $711.5k (2022)",17796,2.048
+669211,Keegan Akin,BAL,2022,709500,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 BAL payroll (saved page, accessed 2026-10-21)","1 yr, $709.5k (2022)",19362,1.083
+669330,Tyler Wells,BAL,2022,704500,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 BAL payroll (saved page, accessed 2026-10-21)","1 yr, $704.5k (2022)",20000,1.000
+607216,Joey Krehbiel,BAL,2022,701000,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 BAL payroll (saved page, accessed 2026-10-21)","1 yr, $701k (2022)",13707,0.014
+642585,Félix Bautista,BAL,2022,700000,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 BAL payroll (saved page, accessed 2026-10-21)","1 yr, $700k (2022)",20666,
+519242,Chris Sale,BOS,2022,30000000,25600000,guaranteed,4,0,0,2023:27500000;2024:27500000;2025:20000000,,FanGraphs,"FanGraphs RosterResource 2022 BOS payroll (saved page, accessed 2026-10-21)","5 yr, $145M (2020-24), 2025 club option",10603,11.061
+543135,Nathan Eovaldi,BOS,2022,17000000,17000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 BOS payroll (saved page, accessed 2026-10-21)","4 yr, $68M (2019-22)",9132,10.013
+598264,Matt Barnes,BOS,2022,8125000,9375000,guaranteed,3,0,0,2023:8375000;2024:8000000,,FanGraphs,"FanGraphs RosterResource 2022 BOS payroll (saved page, accessed 2026-10-21)","2 yr, $18.75M (2022-23)",12863,6.110
+608379,Michael Wacha,BOS,2022,7000000,7000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 BOS payroll (saved page, accessed 2026-10-21)","1 yr, $7M (2022)",14078,8.062
+572020,James Paxton,BOS,2022,6000000,5800000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 BOS payroll (saved page, accessed 2026-10-21)","2 yr, $10M (2022-23), 2023 player option",11828,7.151
+448179,Rich Hill,BOS,2022,5000000,5000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 BOS payroll (saved page, accessed 2026-10-21)","1 yr, $5M (2022)",4806,12.127
+621381,Matt Strahm,BOS,2022,3000000,3000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 BOS payroll (saved page, accessed 2026-10-21)","1 yr, $3M (2022)",13799,5.064
+676477,Garrett Whitlock,BOS,2022,720000,720000,guaranteed,7,1,0,2023:1250000;2024:3500000;2025:5500000;2026:7500000;2027:8250000;2028:10500000,,FanGraphs,"FanGraphs RosterResource 2022 BOS payroll (saved page, accessed 2026-10-21)","1 yr, $720k (2022); 4 yr, $18.75M (2023-26), 2027-28 club options; control may run past 2028",20191,1.000
+518489,Ryan Brasier,BOS,2022,1400000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 BOS payroll (saved page, accessed 2026-10-21)","1 yr, $1.4M (2022)",5615,4.109
+601713,Nick Pivetta,BOS,2022,2650000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 BOS payroll (saved page, accessed 2026-10-21)","1 yr, $2.65M (2022)",15454,3.166
+657031,Josh Taylor,BOS,2022,1025000,,arb,4,0,4,,,FanGraphs,"FanGraphs RosterResource 2022 BOS payroll (saved page, accessed 2026-10-21)","1 yr, $1.025M (2022)",17359,2.121
+670167,John Schreiber,BOS,2022,700000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 BOS payroll (saved page, accessed 2026-10-21)","1 yr, $700k (2022)",20020,1.017
+656557,Tanner Houck,BOS,2022,716000,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 BOS payroll (saved page, accessed 2026-10-21)","1 yr, $716k (2022)",19879,0.100
+617228,Hirokazu Sawamura,BOS,2022,1200000,1200000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 BOS payroll (saved page, accessed 2026-10-21)","3 yr, $4.3M (2021-23); no longer on 40-man / in org",27515,1.000
+570663,Hansel Robles,BOS,2022,2250000,2250000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 BOS payroll (saved page, accessed 2026-10-21)","1 yr, $2.25M (2022); no longer on 40-man / in org",11801,6.119
+573186,Marcus Stroman,CHC,2022,25000000,23666667,guaranteed,2,0,0,2023:25000000,,FanGraphs,"FanGraphs RosterResource 2022 CHC payroll (saved page, accessed 2026-10-21)","3 yr, $71M (2022-24)",13431,7.026
+543294,Kyle Hendricks,CHC,2022,14000000,13875000,guaranteed,3,0,0,2023:14000000;2024:16000000,,FanGraphs,"FanGraphs RosterResource 2022 CHC payroll (saved page, accessed 2026-10-21)","4 yr, $55.5M (2020-23), 2024 club option",12049,7.081
+489119,Wade Miley,CHC,2022,10000000,10000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 CHC payroll (saved page, accessed 2026-10-21)","3 yr, $24M (2020-22; 2022 club option exercised)",8779,10.025
+592767,Drew Smyly,CHC,2022,4250000,5250000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 CHC payroll (saved page, accessed 2026-10-21)","1 yr, $5.25M (2022)",11760,9.143
+621219,Alec Mills,CHC,2022,741250,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 CHC payroll (saved page, accessed 2026-10-21)","1 yr, $741.25k (2022)",13834,2.097
+676051,Codi Heuer,CHC,2022,734000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 CHC payroll (saved page, accessed 2026-10-21)","1 yr, $734k (2022)",23293,2.000
+592858,Rowan Wick,CHC,2022,724000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 CHC payroll (saved page, accessed 2026-10-21)","1 yr, $724k (2022)",14646,2.114
+623364,Brad Wieck,CHC,2022,717000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 CHC payroll (saved page, accessed 2026-10-21)","1 yr, $717k (2022)",16390,2.085
+640470,Adbert Alzolay,CHC,2022,718250,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 CHC payroll (saved page, accessed 2026-10-21)","1 yr, $718.25k (2022)",17859,1.050
+624522,Keegan Thompson,CHC,2022,706000,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 CHC payroll (saved page, accessed 2026-10-21)","1 yr, $706k (2022)",19795,0.131
+657006,Justin Steele,CHC,2022,705000,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 CHC payroll (saved page, accessed 2026-10-21)","1 yr, $705k (2022)",17312,0.143
+596057,Daniel Norris,CHC,2022,1750000,1750000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 CHC payroll (saved page, accessed 2026-10-21)","1 yr, $1.75M (2022); no longer on 40-man / in org",13475,6.073
+656794,Sean Newcomb,CHC,2022,900000,900000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 CHC payroll (saved page, accessed 2026-10-21)","1 yr, $900k (2022); no longer on 40-man / in org",16943,3.121
+458681,Lance Lynn,CWS,2022,18500000,19000000,guaranteed,3,0,0,2023:18500000;2024:18000000,,FanGraphs,"FanGraphs RosterResource 2022 CWS payroll (saved page, accessed 2026-10-21)","2 yr, $38M (2022-23)",2520,10.119
+521230,Liam Hendriks,CWS,2022,13333333,18000000,guaranteed,3,0,0,2023:14333333;2024:15000000,,FanGraphs,"FanGraphs RosterResource 2022 CWS payroll (saved page, accessed 2026-10-21)","3 yr, $54M (2021-23)",3548,7.164
+523260,Joe Kelly,CWS,2022,7000000,8500000,guaranteed,3,0,0,2023:9000000;2024:9500000,,FanGraphs,"FanGraphs RosterResource 2022 CWS payroll (saved page, accessed 2026-10-21)","2 yr, $17M (2022-23)",9761,9.029
+608665,Kendall Graveman,CWS,2022,8000000,8000000,guaranteed,3,0,0,2023:8000000;2024:8000000,,FanGraphs,"FanGraphs RosterResource 2022 CWS payroll (saved page, accessed 2026-10-21)","3 yr, $24M (2022-24)",15514,6.078
+518617,Jake Diekman,CWS,2022,3500000,4000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 CWS payroll (saved page, accessed 2026-10-21)","2 yr, $8M (2022-23)",5003,9.050
+607481,Aaron Bummer,CWS,2022,2500000,3200000,guaranteed,3,0,0,2023:3750000;2024:5500000,,FanGraphs,"FanGraphs RosterResource 2022 CWS payroll (saved page, accessed 2026-10-21)","5 yr, $14.75M (2020-24)",16258,3.150
+456501,Johnny Cueto,CWS,2022,3142857,3142857,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 CWS payroll (saved page, accessed 2026-10-21)","1 yr, $3.143M (2022); $4M, prorated",6893,14.000
+592826,Vince Velasquez,CWS,2022,3000000,3000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 CWS payroll (saved page, accessed 2026-10-21)","1 yr, $3M (2022)",11189,6.086
+608337,Lucas Giolito,CWS,2022,7450000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 CWS payroll (saved page, accessed 2026-10-21)","1 yr, $7.45M (2022)",15474,4.080
+605195,Kyle Crick,CWS,2022,1250000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 CWS payroll (saved page, accessed 2026-10-21)","1 yr, $1.25M (2022)",13182,4.047
+625643,Reynaldo López,CWS,2022,2625000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 CWS payroll (saved page, accessed 2026-10-21)","1 yr, $2.625M (2022)",16400,4.004
+656302,Dylan Cease,CWS,2022,750000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 CWS payroll (saved page, accessed 2026-10-21)","1 yr, $750k (2022)",18525,2.089
+656629,Michael Kopech,CWS,2022,730000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 CWS payroll (saved page, accessed 2026-10-21)","1 yr, $730k (2022)",17282,2.041
+614179,José Ruiz,CWS,2022,720000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 CWS payroll (saved page, accessed 2026-10-21)","1 yr, $720k (2022)",14552,2.048
+676979,Garrett Crochet,CWS,2022,715000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 CWS payroll (saved page, accessed 2026-10-21)","1 yr, $715k (2022)",27463,1.028
+572971,Dallas Keuchel,CWS,2022,18000000,18500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 CWS payroll (saved page, accessed 2026-10-21)","3 yr, $55.5M (2020-22); no longer on 40-man / in org",9434,9.031
+501985,Mike Minor,CIN,2022,10000000,9000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 CIN payroll (saved page, accessed 2026-10-21)","2 yr, $18M (2021-22)",10021,10.138
+458677,Justin Wilson,CIN,2022,2300000,2575000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 CIN payroll (saved page, accessed 2026-10-21)","2 yr, $5.15M (2021-22; 2022 player option exercised)",4301,9.035
+519326,Hunter Strickland,CIN,2022,1825000,1825000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 CIN payroll (saved page, accessed 2026-10-21)","1 yr, $1.825M (2022)",7836,6.033
+571656,Buck Farmer,CIN,2022,850000,850000,guaranteed,2,0,1,,,FanGraphs,"FanGraphs RosterResource 2022 CIN payroll (saved page, accessed 2026-10-21)","1 yr, $850k (2022)",14814,5.018
+570666,Luis Cessa,CIN,2022,1800000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 CIN payroll (saved page, accessed 2026-10-21)","1 yr, $1.8M (2022)",13345,4.131
+608371,Lucas Sims,CIN,2022,1200000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 CIN payroll (saved page, accessed 2026-10-21)","1 yr, $1.2M (2022)",13470,3.014
+656546,Jeff Hoffman,CIN,2022,925000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 CIN payroll (saved page, accessed 2026-10-21)","1 yr, $925k (2022)",17432,3.105
+622088,Tejay Antone,CIN,2022,720000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 CIN payroll (saved page, accessed 2026-10-21)","1 yr, $720k (2022)",16233,2.000
+643290,Justin Dunn,CIN,2022,720000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 CIN payroll (saved page, accessed 2026-10-21)","1 yr, $720k (2022)",19268,2.020
+605521,Art Warren,CIN,2022,702500,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 CIN payroll (saved page, accessed 2026-10-21)","1 yr, $702.5k (2022)",18251,0.146
+668881,Hunter Greene,CIN,2022,700000,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 CIN payroll (saved page, accessed 2026-10-21)","1 yr, $700k (2022)",22182,
+664747,Alexis Díaz,CIN,2022,700000,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 CIN payroll (saved page, accessed 2026-10-21)","1 yr, $700k (2022)",21132,
+668933,Graham Ashcraft,CIN,2022,700000,,pre-arb,7,4,3,,,FanGraphs,"FanGraphs RosterResource 2022 CIN payroll (saved page, accessed 2026-10-21)","1 yr, $700k (2022); control may run past 2028",27552,
+661403,Emmanuel Clase,CLE,2022,1900000,4000000,guaranteed,4,0,0,2023:1900000;2024:2900000;2025:4900000,,FanGraphs,"FanGraphs RosterResource 2022 CLE payroll (saved page, accessed 2026-10-21)","5 yr, $20M (2022-26), 2027-28 club options",21032,1.059
+669456,Shane Bieber,CLE,2022,6000000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 CLE payroll (saved page, accessed 2026-10-21)","1 yr, $6M (2022)",19427,3.097
+615698,Cal Quantrill,CLE,2022,2510000,,arb,4,0,4,,,FanGraphs,"FanGraphs RosterResource 2022 CLE payroll (saved page, accessed 2026-10-21)","1 yr, $2.51M (2022)",19312,2.132
+668676,Zach Plesac,CLE,2022,2000000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 CLE payroll (saved page, accessed 2026-10-21)","1 yr, $2M (2022)",19979,2.086
+650644,Aaron Civale,CLE,2022,716900,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 CLE payroll (saved page, accessed 2026-10-21)","1 yr, $716.9k (2022)",19479,2.058
+675916,James Karinchak,CLE,2022,714500,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 CLE payroll (saved page, accessed 2026-10-21)","1 yr, $714.5k (2022)",20151,1.169
+663474,Triston McKenzie,CLE,2022,707100,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 CLE payroll (saved page, accessed 2026-10-21)","1 yr, $707.1k (2022)",18000,1.074
+663986,Trevor Stephan,CLE,2022,703400,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 CLE payroll (saved page, accessed 2026-10-21)","1 yr, $703.4k (2022)",19932,1.000
+669212,Eli Morgan,CLE,2022,702100,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 CLE payroll (saved page, accessed 2026-10-21)","1 yr, $702.1k (2022)",20203,0.108
+680704,Nick Sandlin,CLE,2022,701700,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 CLE payroll (saved page, accessed 2026-10-21)","1 yr, $701.7k (2022)",20517,0.157
+543766,Bryan Shaw,CLE,2022,2500000,3000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 CLE payroll (saved page, accessed 2026-10-21)","1 yr, $3M (2022); no longer on 40-man / in org",8110,9.152
+607536,Kyle Freeland,COL,2022,7000000,12900000,guaranteed,6,0,0,2023:10500000;2024:15000000;2025:16000000;2026:16000000,,FanGraphs,"FanGraphs RosterResource 2022 COL payroll (saved page, accessed 2026-10-21)","5 yr, $64.5M (2022-26), 2027 vesting option",16256,4.144
+622608,Antonio Senzatela,COL,2022,7250000,10100000,guaranteed,6,0,0,2023:7250000;2024:12000000;2025:12000000;2026:12000000;2027:14000000,,FanGraphs,"FanGraphs RosterResource 2022 COL payroll (saved page, accessed 2026-10-21)","5 yr, $50.5M (2022-26), 2027 club option",15488,4.106
+608566,Germán Márquez,COL,2022,11300000,8600000,guaranteed,2,0,0,2023:15300000,,FanGraphs,"FanGraphs RosterResource 2022 COL payroll (saved page, accessed 2026-10-21)","5 yr, $40.5M (2019-23)",15038,5.027
+453268,Daniel Bard,COL,2022,4400000,4400000,guaranteed,3,0,0,2023:9500000;2024:9500000,,FanGraphs,"FanGraphs RosterResource 2022 COL payroll (saved page, accessed 2026-10-21)","1 yr, $4.4M (2022); 2 yr, $19M (2023-24)",7115,5.103
+623184,Scott Oberg,COL,2022,7000000,4333333,guaranteed,2,0,0,2023:8000000,,FanGraphs,"FanGraphs RosterResource 2022 COL payroll (saved page, accessed 2026-10-21)","3 yr, $13M (2020-22)",13911,6.063
+517008,Alex Colomé,COL,2022,4150000,4150000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 COL payroll (saved page, accessed 2026-10-21)","1 yr, $4.15M (2022)",6661,7.118
+641771,Chad Kuhl,COL,2022,3000000,3000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 COL payroll (saved page, accessed 2026-10-21)","1 yr, $3M (2022)",14975,5.079
+608032,Carlos Estévez,COL,2022,3025000,,arb,1,0,1,,,FanGraphs,"FanGraphs RosterResource 2022 COL payroll (saved page, accessed 2026-10-21)","1 yr, $3.025M (2022)",14542,5.022
+659275,Dinelson Lamet,COL,2022,4775000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 COL payroll (saved page, accessed 2026-10-21)","1 yr, $4.775M (2022)",17186,4.130
+641755,Tyler Kinley,COL,2022,1025000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 COL payroll (saved page, accessed 2026-10-21)","1 yr, $1.025M (2022)",18297,3.014
+663567,Peter Lambert,COL,2022,762500,,arb,4,0,4,,,FanGraphs,"FanGraphs RosterResource 2022 COL payroll (saved page, accessed 2026-10-21)","1 yr, $762.5k (2022)",17969,2.116
+596295,Austin Gomber,COL,2022,710000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 COL payroll (saved page, accessed 2026-10-21)","1 yr, $710k (2022)",16561,2.111
+468504,Jhoulys Chacín,COL,2022,1250000,1250000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 COL payroll (saved page, accessed 2026-10-21)","1 yr, $1.25M (2022); no longer on 40-man / in org",2608,10.087
+593958,Eduardo Rodriguez,DET,2022,8846154,8846154,guaranteed,2,0,0,2023:14000000,,FanGraphs,"FanGraphs RosterResource 2022 DET payroll (saved page, accessed 2026-10-21)","5 yr, $71.846M (2022-26); 2022 salary reduced (restricted list)",13164,6.130
+605177,Andrew Chafin,DET,2022,6500000,6500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 DET payroll (saved page, accessed 2026-10-21)","2 yr, $13M (2022-23)",12988,7.020
+605513,Spencer Turnbull,DET,2022,1500000,1825000,guaranteed,3,0,1,2023:2150000,,FanGraphs,"FanGraphs RosterResource 2022 DET payroll (saved page, accessed 2026-10-21)","2 yr, $3.65M (2022-23)",16207,3.020
+542585,José Cisnero,DET,2022,1900000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 DET payroll (saved page, accessed 2026-10-21)","1 yr, $1.9M (2022)",6399,4.020
+641729,Joe Jiménez,DET,2022,1790000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 DET payroll (saved page, accessed 2026-10-21)","1 yr, $1.79M (2022)",15761,4.061
+571800,Drew Hutchison,DET,2022,800000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 DET payroll (saved page, accessed 2026-10-21)","1 yr, $800k (2022)",10732,4.130
+642397,Gregory Soto,DET,2022,722400,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 DET payroll (saved page, accessed 2026-10-21)","1 yr, $722.4k (2022)",19677,2.102
+641302,Tyler Alexander,DET,2022,716900,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 DET payroll (saved page, accessed 2026-10-21)","1 yr, $716.9k (2022)",17735,2.058
+663554,Casey Mize,DET,2022,714200,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 DET payroll (saved page, accessed 2026-10-21)","1 yr, $714.2k (2022)",20492,1.111
+669373,Tarik Skubal,DET,2022,713600,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 DET payroll (saved page, accessed 2026-10-21)","1 yr, $713.6k (2022)",22267,1.114
+608335,Kyle Funkhouser,DET,2022,710200,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 DET payroll (saved page, accessed 2026-10-21)","1 yr, $710.2k (2022)",19456,1.133
+656638,Alex Lange,DET,2022,703700,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 DET payroll (saved page, accessed 2026-10-21)","1 yr, $703.7k (2022)",19883,0.112
+501381,Michael Pineda,DET,2022,5500000,5500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 DET payroll (saved page, accessed 2026-10-21)","1 yr, $5.5M (2022); no longer on 40-man / in org",5372,9.165
+503449,Wily Peralta,DET,2022,2376374,2376374,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 DET payroll (saved page, accessed 2026-10-21)","1 yr, $2.376M (2022); $2.5M, prorated; no longer on 40-man / in org",7738,6.105
+606930,Jacob Barnes,DET,2022,422198,422198,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 DET payroll (saved page, accessed 2026-10-21)","1 yr, $422.198k (2022); $1.13M, prorated; no longer on 40-man / in org",12323,4.157
+434378,Justin Verlander,HOU,2022,25000000,25000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 HOU payroll (saved page, accessed 2026-10-21)","2 yr, $50M (2022-23)",8700,16.002
+621121,Lance McCullers Jr.,HOU,2022,15950000,17000000,guaranteed,4,0,0,2023:15950000;2024:17700000;2025:17700000,,FanGraphs,"FanGraphs RosterResource 2022 HOU payroll (saved page, accessed 2026-10-21)","5 yr, $85M (2022-26)",14120,6.140
+519293,Will Smith,HOU,2022,13000000,13333333,guaranteed,2,0,0,2023:13000000,,FanGraphs,"FanGraphs RosterResource 2022 HOU payroll (saved page, accessed 2026-10-21)","3 yr, $40M (2020-22)",8048,8.155
+519151,Ryan Pressly,HOU,2022,10000000,10000000,guaranteed,3,0,0,2023:14000000;2024:14000000,,FanGraphs,"FanGraphs RosterResource 2022 HOU payroll (saved page, accessed 2026-10-21)","3 yr, $27.5M (2020-22; 2022 vesting/club vested); 3 yr, $42M (2023-25)",7005,8.039
+593576,Héctor Neris,HOU,2022,8000000,8166667,guaranteed,2,0,0,2023:8000000,,FanGraphs,"FanGraphs RosterResource 2022 HOU payroll (saved page, accessed 2026-10-21)","3 yr, $24.5M (2022-24); converts to player option with passed end-of-season physical",11804,6.068
+606160,Rafael Montero,HOU,2022,2725000,,arb,1,0,1,,,FanGraphs,"FanGraphs RosterResource 2022 HOU payroll (saved page, accessed 2026-10-21)","1 yr, $2.725M (2022)",12760,5.138
+592773,Ryne Stanek,HOU,2022,2100000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 HOU payroll (saved page, accessed 2026-10-21)","1 yr, $2.1M (2022)",15947,4.038
+664208,Phil Maton,HOU,2022,1550000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 HOU payroll (saved page, accessed 2026-10-21)","1 yr, $1.55M (2022)",18064,4.047
+657624,Josh James,HOU,2022,800000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 HOU payroll (saved page, accessed 2026-10-21)","1 yr, $800k (2022)",16794,3.006
+664285,Framber Valdez,HOU,2022,3000000,,arb,4,0,4,,,FanGraphs,"FanGraphs RosterResource 2022 HOU payroll (saved page, accessed 2026-10-21)","1 yr, $3M (2022)",17295,2.163
+664299,Cristian Javier,HOU,2022,749100,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 HOU payroll (saved page, accessed 2026-10-21)","1 yr, $749.1k (2022)",17606,2.000
+642130,Blake Taylor,HOU,2022,731800,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 HOU payroll (saved page, accessed 2026-10-21)","1 yr, $731.8k (2022)",16418,2.000
+677651,Luis Garcia,HOU,2022,1251500,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 HOU payroll (saved page, accessed 2026-10-21)","1 yr, $1.252M (2022)",23735,1.083
+650556,Bryan Abreu,HOU,2022,719600,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 HOU payroll (saved page, accessed 2026-10-21)","1 yr, $719.6k (2022)",16609,1.022
+520980,Pedro Báez,HOU,2022,5750000,6250000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 HOU payroll (saved page, accessed 2026-10-21)","2 yr, $12.5M (2021-22); no longer on 40-man / in org",5420,7.059
+425844,Zack Greinke,KC,2022,13000000,13000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 KC payroll (saved page, accessed 2026-10-21)","1 yr, $13M (2022)",1943,17.057
+664199,Taylor Clarke,KC,2022,975000,975000,guaranteed,4,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 KC payroll (saved page, accessed 2026-10-21)","1 yr, $975k (2022)",17611,2.106
+641745,Brad Keller,KC,2022,4825000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 KC payroll (saved page, accessed 2026-10-21)","1 yr, $4.825M (2022)",15734,4.000
+596133,Luke Weaver,KC,2022,2875000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 KC payroll (saved page, accessed 2026-10-21)","1 yr, $2.875M (2022)",16918,4.112
+607237,Amir Garrett,KC,2022,2025000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 KC payroll (saved page, accessed 2026-10-21)","1 yr, $2.025M (2022)",14375,4.099
+605130,Scott Barlow,KC,2022,2400000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 KC payroll (saved page, accessed 2026-10-21)","1 yr, $2.4M (2022)",14993,3.030
+622251,Josh Staumont,KC,2022,728000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 KC payroll (saved page, accessed 2026-10-21)","1 yr, $728k (2022)",18335,2.072
+663903,Brady Singer,KC,2022,726250,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 KC payroll (saved page, accessed 2026-10-21)","1 yr, $726.25k (2022)",25377,2.000
+664948,Anthony Misiewicz,KC,2022,714900,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 KC payroll (saved page, accessed 2026-10-21)","1 yr, $714.9k (2022)",18152,2.000
+663460,Kris Bubic,KC,2022,713750,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 KC payroll (saved page, accessed 2026-10-21)","1 yr, $713.75k (2022)",21455,1.148
+641394,Jake Brentz,KC,2022,711250,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 KC payroll (saved page, accessed 2026-10-21)","1 yr, $711.25k (2022)",17783,1.000
+663738,Daniel Lynch IV,KC,2022,703600,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 KC payroll (saved page, accessed 2026-10-21)","1 yr, $703.6k (2022)",21537,0.083
+669395,Dylan Coleman,KC,2022,700650,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 KC payroll (saved page, accessed 2026-10-21)","1 yr, $700.65k (2022)",22276,0.014
+571901,Aaron Loup,LAA,2022,7500000,8500000,guaranteed,3,0,0,2023:7500000;2024:7500000,,FanGraphs,"FanGraphs RosterResource 2022 LAA payroll (saved page, accessed 2026-10-21)","2 yr, $17M (2022-23)",10343,9.040
+572193,Ryan Tepera,LAA,2022,7000000,7000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 LAA payroll (saved page, accessed 2026-10-21)","2 yr, $14M (2022-23)",10291,6.008
+547179,Michael Lorenzen,LAA,2022,6750000,6750000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 LAA payroll (saved page, accessed 2026-10-21)","1 yr, $6.75M (2022)",14843,6.159
+605151,Archie Bradley,LAA,2022,3750000,3750000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 LAA payroll (saved page, accessed 2026-10-21)","1 yr, $3.75M (2022)",12918,6.112
+656288,Griffin Canning,LAA,2022,730000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 LAA payroll (saved page, accessed 2026-10-21)","1 yr, $730k (2022)",19867,2.075
+663776,Patrick Sandoval,LAA,2022,720000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 LAA payroll (saved page, accessed 2026-10-21)","1 yr, $720k (2022)",19447,1.149
+594577,Mike Mayers,LAA,2022,2150000,2150000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 LAA payroll (saved page, accessed 2026-10-21)","1 yr, $2.15M (2022); no longer on 40-man / in org",15451,4.020
+456034,David Price,LAD,2022,32000000,31000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","6 yr, $185M (2016-22)",3184,11.164
+477132,Clayton Kershaw,LAD,2022,17000000,17000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","1 yr, $17M (2022)",2036,13.105
+518886,Craig Kimbrel,LAD,2022,16000000,16000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","4 yr, $58M (2019-22; 2022 club option exercised)",6655,10.161
+595014,Blake Treinen,LAD,2022,8000000,8750000,guaranteed,3,0,0,2023:8000000;2024:1000000,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","3 yr, $24M (2021-23), 2024 club option",12572,7.065
+571760,Andrew Heaney,LAD,2022,8500000,8500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","1 yr, $8.5M (2022)",15423,6.150
+542881,Tyler Anderson,LAD,2022,8000000,8000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","1 yr, $8M (2022)",12880,6.065
+543339,Daniel Hudson,LAD,2022,6000000,7000000,guaranteed,3,0,0,2023:6500000;2024:6500000,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","2 yr, $12.5M (2022-23)",7146,11.106
+621111,Walker Buehler,LAD,2022,4250000,4000000,guaranteed,3,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","2 yr, $8M (2021-22)",19374,3.168
+518633,Danny Duffy,LAD,2022,3000000,3000000,guaranteed,2,0,0,2023:7000000,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","1 yr, $3M (2022)",3542,10.085
+455119,Chris Martin,LAD,2022,2500000,2500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","1 yr, $2.5M (2022)",11847,4.133
+592454,Tommy Kahnle,LAD,2022,3725000,2375000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","2 yr, $4.75M (2021-22)",11384,6.131
+519076,Jimmy Nelson,LAD,2022,700000,700000,guaranteed,2,0,0,2023:1100000,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","1 yr, $700k (2022)",10547,7.107
+628711,Julio Urías,LAD,2022,8000000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","1 yr, $8M (2022)",14765,4.117
+657571,Caleb Ferguson,LAD,2022,726500,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","1 yr, $726.5k (2022)",19349,3.093
+669160,Dustin May,LAD,2022,730000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","1 yr, $730k (2022)",19716,2.059
+660813,Brusdar Graterol,LAD,2022,720000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","1 yr, $720k (2022)",20367,1.167
+664062,Tony Gonsolin,LAD,2022,720000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","1 yr, $720k (2022)",19388,1.152
+624647,Victor González,LAD,2022,720000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","1 yr, $720k (2022)",16408,1.103
+681911,Alex Vesia,LAD,2022,720000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","1 yr, $720k (2022)",25007,1.103
+623465,Evan Phillips,LAD,2022,720000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","1 yr, $720k (2022)",17734,1.136
+545333,Trevor Bauer,LAD,2022,3868132,3868132,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 LAD payroll (saved page, accessed 2026-10-21)","3 yr, $64.406M (2021-23); 2023 and 2024 salaries reduced due to 194-game suspension; no longer on 40-man / in org",12703,7.078
+645261,Sandy Alcantara,MIA,2022,3800000,11200000,guaranteed,6,0,0,2023:6300000;2024:9300000;2025:17300000;2026:17300000;2027:21000000,,FanGraphs,"FanGraphs RosterResource 2022 MIA payroll (saved page, accessed 2026-10-21)","5 yr, $56M (2022-26), 2027 club option",18684,3.100
+542947,Richard Bleier,MIA,2022,2250000,3000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 MIA payroll (saved page, accessed 2026-10-21)","2 yr, $6M (2022-23)",7803,5.074
+571670,Dylan Floro,MIA,2022,3000000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 MIA payroll (saved page, accessed 2026-10-21)","1 yr, $3M (2022)",13394,4.053
+641154,Pablo López,MIA,2022,2450000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIA payroll (saved page, accessed 2026-10-21)","1 yr, $2.45M (2022)",17085,3.093
+622694,Elieser Hernández,MIA,2022,1325000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIA payroll (saved page, accessed 2026-10-21)","1 yr, $1.325M (2022)",16933,3.118
+656945,Tanner Scott,MIA,2022,1050000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIA payroll (saved page, accessed 2026-10-21)","1 yr, $1.05M (2022)",17586,3.059
+642121,Cole Sulser,MIA,2022,711000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIA payroll (saved page, accessed 2026-10-21)","1 yr, $711k (2022)",15256,2.028
+669432,Trevor Rogers,MIA,2022,722000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIA payroll (saved page, accessed 2026-10-21)","1 yr, $722k (2022)",22286,1.093
+666200,Jesús Luzardo,MIA,2022,715000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIA payroll (saved page, accessed 2026-10-21)","1 yr, $715k (2022)",19959,1.165
+595345,Steven Okert,MIA,2022,709000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIA payroll (saved page, accessed 2026-10-21)","1 yr, $709k (2022)",13580,1.109
+669622,Anthony Bender,MIA,2022,713000,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIA payroll (saved page, accessed 2026-10-21)","1 yr, $713k (2022)",19742,0.153
+642547,Freddy Peralta,MIL,2022,2484960,3100000,guaranteed,5,0,0,2023:3734960;2024:5734960;2025:8000000;2026:8000000,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","5 yr, $15.5M (2020-24), 2025-26 club options",18679,3.090
+502202,Brad Boxberger,MIL,2022,1750000,2500000,guaranteed,2,0,0,2023:3000000,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","1 yr, $2.5M (2022)",10133,8.033
+572096,Trevor Rosenthal,MIL,2022,1903846,1903846,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","1 yr, $1.904M (2022); $4.5M, prorated",10745,8.001
+676879,Aaron Ashby,MIL,2022,704500,704500,guaranteed,7,1,0,2023:1200000;2024:1450000;2025:3450000;2026:5700000;2027:7700000;2028:9000000,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","1 yr, $704.5k (2022); 5 yr, $20.5M (2023-27), 2028-29 club options; control may run past 2028",23550,0.046
+573124,Taylor Rogers,MIL,2022,7300000,,arb,1,0,1,,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","1 yr, $7.3M (2022)",13449,5.145
+608718,Brent Suter,MIL,2022,2700000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","1 yr, $2.7M (2022)",13942,4.161
+605540,Brandon Woodruff,MIL,2022,6800000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","1 yr, $6.8M (2022)",16162,3.161
+669203,Corbin Burnes,MIL,2022,6500000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","1 yr, $6.5M (2022)",19361,3.049
+605288,Adrian Houser,MIL,2022,2425000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","1 yr, $2.425M (2022)",12718,3.010
+641778,Eric Lauer,MIL,2022,2425000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","1 yr, $2.425M (2022)",19316,3.033
+456713,Matt Bush,MIL,2022,825000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","1 yr, $825k (2022)",1246,3.132
+641627,Trevor Gott,MIL,2022,725000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","1 yr, $725k (2022)",15046,3.057
+594311,Jandel Gustave,MIL,2022,700000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","1 yr, $700k (2022)",14665,3.027
+642207,Devin Williams,MIL,2022,714500,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","1 yr, $714.5k (2022)",15816,2.056
+664776,Jake Cousins,MIL,2022,706400,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","1 yr, $706.4k (2022)",21620,0.105
+458676,Josh Lindblom,MIL,2022,3041667,3041667,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","3 yr, $9.125M (2020-22); no longer on 40-man / in org",7882,3.037
+570632,José Ureña,MIL,2022,171703,171703,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 MIL payroll (saved page, accessed 2026-10-21)","1 yr, $171.703k (2022); $1.25M, prorated; no longer on 40-man / in org",11589,6.040
+543243,Sonny Gray,MIN,2022,11666667,11500000,guaranteed,2,0,0,2023:12500000,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","3 yr, $32.5M (2020-22), 2023 club option",12768,8.061
+605164,Dylan Bundy,MIN,2022,4000000,5000000,guaranteed,2,0,0,2023:11000000,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","1 yr, $5M (2022)",12917,6.026
+502042,Chris Archer,MIN,2022,2750000,3500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","1 yr, $3.5M (2022)",6345,8.156
+628317,Kenta Maeda,MIN,2022,3125000,3250000,guaranteed,2,0,0,2023:3125000,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","8 yr, $26M (2016-23)",18498,6.000
+677976,Randy Dobnak,MIN,2022,800000,1850000,guaranteed,3,0,0,2023:1500000;2024:2250000,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","5 yr, $9.25M (2021-25)",23798,2.043
+605242,Michael Fulmer,MIN,2022,4950000,,arb,1,0,1,,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","1 yr, $4.95M (2022)",13218,5.157
+641816,Tyler Mahle,MIN,2022,5200000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","1 yr, $5.2M (2022)",16358,4.018
+641941,Emilio Pagán,MIN,2022,2300000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","1 yr, $2.3M (2022)",14771,4.091
+663978,Chris Paddack,MIN,2022,2250000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","1 yr, $2.25M (2022)",20099,3.000
+605347,Jorge López,MIN,2022,1500000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","1 yr, $1.5M (2022)",14527,3.102
+573204,Caleb Thielbar,MIN,2022,1300000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","1 yr, $1.3M (2022)",10078,3.131
+543056,Danny Coulombe,MIN,2022,979500,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","1 yr, $979.5k (2022)",13293,3.008
+660896,Jorge Alcala,MIN,2022,717900,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","1 yr, $717.9k (2022)",19459,2.014
+641927,Bailey Ober,MIN,2022,706200,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","1 yr, $706.2k (2022)",21224,0.124
+657746,Joe Ryan,MIN,2022,701650,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","1 yr, $701.65k (2022)",21390,0.033
+661395,Jhoan Duran,MIN,2022,700000,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","1 yr, $700k (2022)",21029,0.000
+643377,Griffin Jax,MIN,2022,700000,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","1 yr, $700k (2022)",20253,0.091
+608648,Tyler Duffey,MIN,2022,3800000,3800000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","1 yr, $3.8M (2022); no longer on 40-man / in org",13758,5.074
+501925,Joe Smith,MIN,2022,2500000,2500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 MIN payroll (saved page, accessed 2026-10-21)","1 yr, $2.5M (2022); no longer on 40-man / in org",3281,13.091
+453286,Max Scherzer,NYM,2022,43333333,43333333,guaranteed,3,0,0,2023:43333333;2024:43333334,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","3 yr, $130M (2022-24); waived opt out with trade to Rangers",3137,13.079
+594798,Jacob deGrom,NYM,2022,38500000,23900000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","4 yr, $117M (2019-22)",10954,7.139
+471911,Carlos Carrasco,NYM,2022,12000000,11750000,guaranteed,2,0,0,2023:14000000,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","4 yr, $47M (2019-22), 2023 club option",6632,10.147
+592836,Taijuan Walker,NYM,2022,8000000,9000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","3 yr, $24.5M (2021-23)",11836,7.142
+605135,Chris Bassitt,NYM,2022,8650000,8800000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","1 yr, $8.8M (2022)",12304,5.130
+543507,Trevor May,NYM,2022,7750000,7750000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","2 yr, $15.5M (2021-22)",6398,7.012
+571710,Mychal Givens,NYM,2022,3500000,5000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","1 yr, $5M (2022)",10430,6.069
+493603,Adam Ottavino,NYM,2022,4000000,4000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","1 yr, $4M (2022)",1247,10.087
+570257,Joely Rodríguez,NYM,2022,2500000,2500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","1 yr, $2.5M (2022); includes $500K trade bonus",11487,2.096
+595928,John Curtiss,NYM,2022,770000,770000,guaranteed,2,0,0,2023:775000,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","1 yr, $770k (2022), 2023 club option",16128,2.045
+621242,Edwin Díaz,NYM,2022,10200000,,arb,1,0,1,,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","1 yr, $10.2M (2022)",14710,5.121
+607625,Seth Lugo,NYM,2022,3925000,,arb,1,0,1,,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","1 yr, $3.925M (2022)",12447,5.082
+592866,Trevor Williams,NYM,2022,3900000,,arb,1,0,1,,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","1 yr, $3.9M (2022)",16977,5.026
+664192,Joey Lucchesi,NYM,2022,1150000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","1 yr, $1.15M (2022)",19320,3.067
+622098,Drew Smith,NYM,2022,750000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","1 yr, $750k (2022)",17755,3.034
+656731,Tylor Megill,NYM,2022,707500,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","1 yr, $707.5k (2022)",21318,0.102
+592741,Chasen Shreve,NYM,2022,1500000,1500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 NYM payroll (saved page, accessed 2026-10-21)","1 yr, $1.5M (2022); no longer on 40-man / in org",10855,5.158
+543037,Gerrit Cole,NYY,2022,36000000,36000000,guaranteed,7,0,0,2023:36000000;2024:36000000;2025:36000000;2026:36000000;2027:36000000;2028:36000000,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","9 yr, $324M (2020-28); control may run past 2028",13125,8.111
+547973,Aroldis Chapman,NYY,2022,16000000,17466667,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","3 yr, $48M (2020-22)",10233,11.009
+502154,Zack Britton,NYY,2022,14000000,13250000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","4 yr, $53M (2019-22; 2021 opt out declined)",3240,9.158
+622663,Luis Severino,NYY,2022,11500000,10000000,guaranteed,2,0,0,2023:15000000,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","4 yr, $40M (2019-22), 2023 club option",15890,5.170
+592791,Jameson Taillon,NYY,2022,5800000,,arb,1,0,1,,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","1 yr, $5.8M (2022)",11674,5.110
+643338,Chad Green,NYY,2022,4000000,,arb,1,0,1,,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","1 yr, $4M (2022)",15552,5.050
+612434,Miguel Castro,NYY,2022,2620000,,arb,1,0,1,,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","1 yr, $2.62M (2022)",15684,5.079
+593423,Frankie Montas,NYY,2022,5025000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","1 yr, $5.025M (2022)",14309,4.015
+593974,Wandy Peralta,NYY,2022,2150000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","1 yr, $2.15M (2022)",14295,4.168
+642152,Lou Trivino III,NYY,2022,3000000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","1 yr, $3M (2022)",15043,3.163
+593334,Domingo Germán,NYY,2022,1750000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","1 yr, $1.75M (2022)",17149,3.017
+642528,Jonathan Loáisiga,NYY,2022,1650000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","1 yr, $1.65M (2022)",19753,3.022
+605280,Clay Holmes,NYY,2022,1100000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","1 yr, $1.1M (2022)",13649,3.031
+476595,Lucas Luetge,NYY,2022,905000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","1 yr, $905k (2022)",8337,3.015
+641482,Nestor Cortes,NYY,2022,727500,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","1 yr, $727.5k (2022)",17874,2.094
+650633,Michael King,NYY,2022,722500,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","1 yr, $722.5k (2022)",19853,2.004
+664123,Scott Effross,NYY,2022,701500,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 NYY payroll (saved page, accessed 2026-10-21)","1 yr, $701.5k (2022)",18384,0.037
+554430,Zack Wheeler,PHI,2022,26000000,23600000,guaranteed,3,0,0,2023:24500000;2024:23500000,,FanGraphs,"FanGraphs RosterResource 2022 PHI payroll (saved page, accessed 2026-10-21)","5 yr, $118M (2020-24)",10310,8.098
+592789,Noah Syndergaard,PHI,2022,21000000,21000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 PHI payroll (saved page, accessed 2026-10-21)","1 yr, $21M (2022)",11762,6.149
+605400,Aaron Nola,PHI,2022,15500000,11250000,guaranteed,2,0,0,2023:16000000,,FanGraphs,"FanGraphs RosterResource 2022 PHI payroll (saved page, accessed 2026-10-21)","4 yr, $45M (2019-22), 2023 club option",16149,6.076
+608349,Corey Knebel,PHI,2022,10000000,10000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 PHI payroll (saved page, accessed 2026-10-21)","1 yr, $10M (2022)",15010,6.151
+502043,Kyle Gibson,PHI,2022,7666667,9333333,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 PHI payroll (saved page, accessed 2026-10-21)","3 yr, $28M (2020-22)",10123,8.039
+543272,Brad Hand,PHI,2022,6000000,6000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 PHI payroll (saved page, accessed 2026-10-21)","1 yr, $6M (2022)",9111,8.092
+621107,Zach Eflin,PHI,2022,5550000,5700000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 PHI payroll (saved page, accessed 2026-10-21)","1 yr, $5.7M (2022)",13774,5.018
+502085,David Robertson,PHI,2022,3500000,3500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 PHI payroll (saved page, accessed 2026-10-21)","1 yr, $3.5M (2022)",8241,12.104
+621237,José Alvarado,PHI,2022,1900000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 PHI payroll (saved page, accessed 2026-10-21)","1 yr, $1.9M (2022)",17780,4.088
+622554,Seranthony Domínguez,PHI,2022,725000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 PHI payroll (saved page, accessed 2026-10-21)","1 yr, $725k (2022)",19249,3.131
+624133,Ranger Suarez,PHI,2022,730000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 PHI payroll (saved page, accessed 2026-10-21)","1 yr, $730k (2022)",17277,2.112
+656322,Sam Coonrod,PHI,2022,717500,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 PHI payroll (saved page, accessed 2026-10-21)","1 yr, $717.5k (2022)",17264,2.078
+641401,Connor Brogdon,PHI,2022,715000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 PHI payroll (saved page, accessed 2026-10-21)","1 yr, $715k (2022)",21205,1.081
+544727,Jeurys Familia,PHI,2022,6000000,6000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 PHI payroll (saved page, accessed 2026-10-21)","1 yr, $6M (2022); no longer on 40-man / in org",5114,9.023
+596112,Robert Stephenson,PIT,2022,1280000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 PIT payroll (saved page, accessed 2026-10-21)","1 yr, $1.28M (2022)",13594,4.049
+664141,JT Brubaker,PIT,2022,725000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 PIT payroll (saved page, accessed 2026-10-21)","1 yr, $725k (2022)",17578,2.000
+621249,Duane Underwood Jr.,PIT,2022,725000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 PIT payroll (saved page, accessed 2026-10-21)","1 yr, $725k (2022)",14677,2.044
+670280,David Bednar,PIT,2022,715000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 PIT payroll (saved page, accessed 2026-10-21)","1 yr, $715k (2022)",19569,1.076
+640444,Wil Crowe,PIT,2022,715000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 PIT payroll (saved page, accessed 2026-10-21)","1 yr, $715k (2022)",19800,1.011
+605507,Zach Thompson,PIT,2022,705000,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 PIT payroll (saved page, accessed 2026-10-21)","1 yr, $705k (2022)",16094,0.121
+592390,Heath Hembree,PIT,2022,2125000,2125000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 PIT payroll (saved page, accessed 2026-10-21)","1 yr, $2.125M (2022); no longer on 40-man / in org",11632,6.096
+506433,Yu Darvish,SD,2022,20000000,21000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 SD payroll (saved page, accessed 2026-10-21)","6 yr, $129M (2018-23; 2020 opt out declined)",13074,10.000
+605483,Blake Snell,SD,2022,13100000,10000000,guaranteed,2,0,0,2023:16600000,,FanGraphs,"FanGraphs RosterResource 2022 SD payroll (saved page, accessed 2026-10-21)","5 yr, $50M (2019-23)",13543,5.072
+605397,Joe Musgrove,SD,2022,8625000,8625000,guaranteed,6,0,0,2023:20000000;2024:20000000;2025:20000000;2026:20000000;2027:20000000,,FanGraphs,"FanGraphs RosterResource 2022 SD payroll (saved page, accessed 2026-10-21)","1 yr, $8.625M (2022); 5 yr, $100M (2023-27)",12970,5.063
+519141,Drew Pomeranz,SD,2022,10000000,8500000,guaranteed,2,0,0,2023:10000000,,FanGraphs,"FanGraphs RosterResource 2022 SD payroll (saved page, accessed 2026-10-21)","4 yr, $34M (2020-23)",11426,9.013
+607259,Nick Martinez,SD,2022,6000000,6375000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 SD payroll (saved page, accessed 2026-10-21)","4 yr, $25.5M (2022-25)",12730,3.002
+605182,Mike Clevinger,SD,2022,8000000,5750000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 SD payroll (saved page, accessed 2026-10-21)","2 yr, $11.5M (2021-22)",12808,5.033
+663158,Robert Suarez,SD,2022,6000000,5500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 SD payroll (saved page, accessed 2026-10-21)","2 yr, $11M (2022-23)",30115,
+489334,Craig Stammen,SD,2022,4000000,4000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 SD payroll (saved page, accessed 2026-10-21)","3 yr, $12M (2020-22; 2022 club option exercised)",7274,10.160
+472610,Luis García,SD,2022,3250000,3500000,guaranteed,2,0,0,2023:3750000,,FanGraphs,"FanGraphs RosterResource 2022 SD payroll (saved page, accessed 2026-10-21)","2 yr, $7M (2022-23)",6984,6.077
+572955,Pierce Johnson,SD,2022,3000000,3000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 SD payroll (saved page, accessed 2026-10-21)","3 yr, $7M (2020-22; 2022 club option exercised)",13435,2.137
+640455,Sean Manaea,SD,2022,9750000,,arb,1,0,1,,,FanGraphs,"FanGraphs RosterResource 2022 SD payroll (saved page, accessed 2026-10-21)","1 yr, $9.75M (2022)",15873,5.157
+623352,Josh Hader,SD,2022,11000000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 SD payroll (saved page, accessed 2026-10-21)","1 yr, $11M (2022)",14212,4.115
+657612,Tim Hill,SD,2022,1325000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 SD payroll (saved page, accessed 2026-10-21)","1 yr, $1.325M (2022)",16814,3.112
+613534,Austin Adams,SD,2022,925000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 SD payroll (saved page, accessed 2026-10-21)","1 yr, $925k (2022)",13801,3.015
+670970,Adrian Morejon,SD,2022,704500,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 SD payroll (saved page, accessed 2026-10-21)","1 yr, $704.5k (2022)",20039,2.013
+622503,Nabil Crismatt,SD,2022,721500,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 SD payroll (saved page, accessed 2026-10-21)","1 yr, $721.5k (2022)",17732,1.033
+607074,Carlos Rodón,SF,2022,21500000,22000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 SF payroll (saved page, accessed 2026-10-21)","1 yr, $21.5M (2022)",16137,6.168
+622072,Alex Wood,SF,2022,12500000,12500000,guaranteed,2,0,0,2023:12500000,,FanGraphs,"FanGraphs RosterResource 2022 SF payroll (saved page, accessed 2026-10-21)","2 yr, $25M (2022-23)",13781,8.123
+543101,Anthony DeSclafani,SF,2022,12000000,12000000,guaranteed,3,0,0,2023:12000000;2024:12000000,,FanGraphs,"FanGraphs RosterResource 2022 SF payroll (saved page, accessed 2026-10-21)","3 yr, $36M (2022-24)",13050,7.062
+502171,Alex Cobb,SF,2022,9000000,10000000,guaranteed,3,0,0,2023:9000000;2024:10000000,,FanGraphs,"FanGraphs RosterResource 2022 SF payroll (saved page, accessed 2026-10-21)","2 yr, $20M (2022-23), 2024 club option",6562,10.061
+596001,Jakob Junis,SF,2022,1750000,1750000,guaranteed,2,0,1,,,FanGraphs,"FanGraphs RosterResource 2022 SF payroll (saved page, accessed 2026-10-21)","1 yr, $1.75M (2022)",13619,4.016
+501625,Jose Alvarez,SF,2022,1500000,1500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 SF payroll (saved page, accessed 2026-10-21)","2 yr, $2.55M (2021-22; 2022 club option exercised)",5358,7.035
+606424,Jarlín García,SF,2022,1725000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 SF payroll (saved page, accessed 2026-10-21)","1 yr, $1.725M (2022)",18282,4.114
+605154,John Brebbia,SF,2022,837500,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 SF payroll (saved page, accessed 2026-10-21)","1 yr, $837.5k (2022)",12777,4.057
+605194,Jharel Cotton,SF,2022,700000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 SF payroll (saved page, accessed 2026-10-21)","1 yr, $700k (2022)",13654,3.052
+643511,Tyler Rogers,SF,2022,730000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 SF payroll (saved page, accessed 2026-10-21)","1 yr, $730k (2022)",15541,2.034
+657277,Logan Webb,SF,2022,730000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 SF payroll (saved page, accessed 2026-10-21)","1 yr, $730k (2022)",17995,2.044
+607755,Andrew Vasquez,SF,2022,800000,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 SF payroll (saved page, accessed 2026-10-21)","1 yr, $800k (2022)",19482,0.045
+666808,Camilo Doval,SF,2022,703750,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 SF payroll (saved page, accessed 2026-10-21)","1 yr, $703.75k (2022)",21992,0.125
+459429,Jake McGee,SF,2022,2500000,2500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 SF payroll (saved page, accessed 2026-10-21)","2 yr, $5M (2021-22); no longer on 40-man / in org",7550,10.127
+608678,Dominic Leone,SF,2022,2250000,2250000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 SF payroll (saved page, accessed 2026-10-21)","1 yr, $2.25M (2022); no longer on 40-man / in org",13763,5.168
+592662,Robbie Ray,SEA,2022,21000000,23000000,guaranteed,5,0,0,2023:21000000;2024:23000000;2025:25000000;2026:25000000,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","5 yr, $115M (2022-26)",11486,7.007
+594835,Marco Gonzales,SEA,2022,5750000,7500000,guaranteed,4,0,0,2023:6750000;2024:12250000;2025:15000000,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","4 yr, $30M (2021-24)",15467,4.102
+622491,Luis Castillo,SEA,2022,7350000,7350000,guaranteed,7,0,0,2023:11400000;2024:24150000;2025:24150000;2026:24150000;2027:24150000,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","1 yr, $7.35M (2022); 5 yr, $108M (2023-27), 2028 vesting option; option vests with 180 IP in 2027; control may run past 2028",15689,4.101
+571510,Matthew Boyd,SEA,2022,5200000,5200000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","1 yr, $5.2M (2022)",15440,5.136
+623167,Chris Flexen,SEA,2022,2950000,4250000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","3 yr, $12.75M (2021-23)",13896,1.107
+662253,Andrés Muñoz,SEA,2022,1500000,1875000,guaranteed,7,0,0,2023:1500000;2024:2000000;2025:2500000;2026:6000000;2027:8000000;2028:10000000,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","4 yr, $7.5M (2022-25), 2026-28 club options; control may run past 2028",20373,2.080
+650895,Diego Castillo,SEA,2022,2150000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","1 yr, $2.15M (2022)",17496,3.118
+623149,Paul Sewald,SEA,2022,1735000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","1 yr, $1.735M (2022)",13892,3.072
+594987,Casey Sadler,SEA,2022,1025000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","1 yr, $1.025M (2022)",11209,3.035
+621366,Ryan Borucki,SEA,2022,825000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","1 yr, $825k (2022)",16350,3.060
+656954,Justus Sheffield,SEA,2022,760800,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","1 yr, $760.8k (2022)",17285,2.053
+657024,Erik Swanson,SEA,2022,711600,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","1 yr, $711.6k (2022)",16587,2.096
+669302,Logan Gilbert,SEA,2022,712300,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","1 yr, $712.3k (2022)",22250,0.144
+669923,George Kirby,SEA,2022,700000,,pre-arb,7,4,3,,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","1 yr, $700k (2022); control may run past 2028",25436,
+571704,Ken Giles,SEA,2022,5250000,3500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","2 yr, $7M (2021-22); no longer on 40-man / in org",12910,7.113
+608716,Drew Steckenrider,SEA,2022,3100000,3100000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","1 yr, $3.1M (2022); no longer on 40-man / in org",18806,4.094
+489265,Sergio Romo,SEA,2022,2000000,2000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 SEA payroll (saved page, accessed 2026-10-21)","1 yr, $2M (2022); no longer on 40-man / in org",9817,13.097
+425794,Adam Wainwright,STL,2022,17500000,17500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","1 yr, $17.5M (2022)",2233,16.027
+571945,Miles Mikolas,STL,2022,17000000,17000000,guaranteed,2,0,0,2023:17000000,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","4 yr, $68M (2020-23)",9803,5.037
+571927,Steven Matz,STL,2022,8500000,11000000,guaranteed,4,0,0,2023:10500000;2024:12500000;2025:12500000,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","4 yr, $44M (2022-25)",13361,6.099
+572403,Drew VerHagen,STL,2022,2500000,2750000,guaranteed,2,0,0,2023:3000000,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","2 yr, $5.5M (2022-23)",13424,3.066
+606149,Giovanny Gallegos,STL,2022,2410000,2410000,guaranteed,2,0,0,2023:5000000,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","1 yr, $2.41M (2022); 2 yr, $11M (2023-24)",14986,3.085
+500779,Jose Quintana,STL,2022,2000000,2000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","1 yr, $2M (2022)",11423,9.133
+656756,Jordan Montgomery,STL,2022,6000000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","1 yr, $6M (2022)",16511,4.153
+656427,Jack Flaherty,STL,2022,5000000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","1 yr, $5M (2022)",17479,4.006
+621052,Alex Reyes,STL,2022,2850000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","1 yr, $2.85M (2022)",15015,4.056
+608717,Chris Stratton,STL,2022,2700000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","1 yr, $2.7M (2022)",13761,4.100
+663855,Jordan Hicks,STL,2022,937500,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","1 yr, $937.5k (2022)",19618,4.000
+641712,Dakota Hudson,STL,2022,1050000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","1 yr, $1.05M (2022)",19206,3.066
+664854,Ryan Helsley,STL,2022,722450,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","1 yr, $722.45k (2022)",18138,2.105
+650893,Génesis Cabrera,STL,2022,719200,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","1 yr, $719.2k (2022)",17490,2.040
+669467,Andre Pallante,STL,2022,700000,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","1 yr, $700k (2022)",26108,
+605156,Aaron Brooks,STL,2022,192308,192308,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","1 yr, $192.308k (2022); $1.4M, prorated; no longer on 40-man / in org",12272,2.102
+519008,T.J. McFarland,STL,2022,2500000,2500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","1 yr, $2.5M (2022); no longer on 40-man / in org",3237,7.072
+621295,Nick Wittgren,STL,2022,1200000,1200000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 STL payroll (saved page, accessed 2026-10-21)","1 yr, $1.2M (2022); no longer on 40-man / in org",15594,5.071
+446372,Corey Kluber,TB,2022,8000000,8000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $8M (2022)",2429,9.074
+607192,Tyler Glasnow,TB,2022,5100000,5100000,guaranteed,3,0,0,2023:5350000;2024:25000000,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $5.1M (2022); 2 yr, $30.35M (2023-24)",14374,4.158
+548384,Brooks Raley,TB,2022,4250000,5000000,guaranteed,3,0,0,2023:4500000;2024:6500000,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","2 yr, $10M (2022-23), 2024 club option",10061,2.045
+642232,Ryan Yarbrough,TB,2022,3850000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $3.85M (2022)",16502,3.147
+552640,Andrew Kittredge,TB,2022,1850000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $1.85M (2022)",12828,3.070
+630023,Yonny Chirinos,TB,2022,1175000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $1.175M (2022)",16401,3.137
+605488,Jeffrey Springs,TB,2022,947500,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $947.5k (2022)",17677,3.055
+623433,Nick Anderson,TB,2022,845000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $845k (2022)",18337,3.000
+656222,Jalen Beeks,TB,2022,750000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $750k (2022)",17192,3.070
+664126,Pete Fairbanks,TB,2022,714400,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $714.4k (2022)",17998,2.057
+608638,JT Chargois,TB,2022,710500,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $710.5k (2022)",13767,2.101
+592094,Jason Adam,TB,2022,900000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $900k (2022); split contract",11861,1.129
+656876,Drew Rasmussen,TB,2022,711800,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $711.8k (2022)",25385,1.111
+656420,J.P. Feyereisen,TB,2022,708600,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $708.6k (2022)",16610,1.108
+676596,Josh Fleming,TB,2022,707400,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $707.4k (2022)",20418,1.076
+672715,Luis Patiño,TB,2022,707400,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $707.4k (2022)",22815,1.058
+663556,Shane McClanahan,TB,2022,711400,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $711.4k (2022)",21483,0.158
+605538,Matt Wisler,TB,2022,2160000,2160000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 TB payroll (saved page, accessed 2026-10-21)","1 yr, $2.16M (2022); no longer on 40-man / in org",12804,5.042
+592351,Jon Gray,TEX,2022,15000000,23000000,guaranteed,4,0,0,2023:15000000;2024:13000000;2025:13000000,,FanGraphs,"FanGraphs RosterResource 2022 TEX payroll (saved page, accessed 2026-10-21)","4 yr, $56M (2022-25)",14916,6.062
+527048,Martín Pérez,TEX,2022,4000000,4000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 TEX payroll (saved page, accessed 2026-10-21)","1 yr, $4M (2022)",6902,9.038
+600917,José Leclerc,TEX,2022,5250000,3687500,guaranteed,3,0,0,2023:6000000;2024:6250000,,FanGraphs,"FanGraphs RosterResource 2022 TEX payroll (saved page, accessed 2026-10-21)","4 yr, $15.25M (2019-22), 2023-24 club options",14524,5.041
+519043,Matt Moore,TEX,2022,2376374,2376374,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 TEX payroll (saved page, accessed 2026-10-21)","1 yr, $2.376M (2022); $2.5M, prorated",1890,9.000
+621368,Taylor Hearn,TEX,2022,1050000,,arb,4,0,4,,,FanGraphs,"FanGraphs RosterResource 2022 TEX payroll (saved page, accessed 2026-10-21)","1 yr, $1.05M (2022)",18325,2.140
+656685,Brett Martin,TEX,2022,1025000,,arb,4,0,4,,,FanGraphs,"FanGraphs RosterResource 2022 TEX payroll (saved page, accessed 2026-10-21)","1 yr, $1.025M (2022)",17369,2.151
+642546,Jonathan Hernández,TEX,2022,720000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 TEX payroll (saved page, accessed 2026-10-21)","1 yr, $720k (2022)",17464,2.041
+663465,Kolby Allard,TEX,2022,720000,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 TEX payroll (saved page, accessed 2026-10-21)","1 yr, $720k (2022)",18694,2.114
+641540,Dane Dunning,TEX,2022,714000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 TEX payroll (saved page, accessed 2026-10-21)","1 yr, $714k (2022)",19409,1.083
+656271,Brock Burke,TEX,2022,714000,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 TEX payroll (saved page, accessed 2026-10-21)","1 yr, $714k (2022)",17968,1.065
+669618,Joe Barlow,TEX,2022,704000,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 TEX payroll (saved page, accessed 2026-10-21)","1 yr, $704k (2022)",22296,0.103
+685503,Kohei Arihara,TEX,2022,3600000,3100000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 TEX payroll (saved page, accessed 2026-10-21)","2 yr, $6.2M (2021-22); no longer on 40-man / in org",27505,1.000
+572070,Garrett Richards,TEX,2022,4500000,5500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 TEX payroll (saved page, accessed 2026-10-21)","1 yr, $5.5M (2022); no longer on 40-man / in org",9784,9.148
+518813,Greg Holland,TEX,2022,150000,150000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 TEX payroll (saved page, accessed 2026-10-21)","1 yr, $150k (2022); $2.1M, prorated; no longer on 40-man / in org",7196,9.163
+592332,Kevin Gausman,TOR,2022,21000000,22000000,guaranteed,5,0,0,2023:21000000;2024:22000000;2025:23000000;2026:23000000,,FanGraphs,"FanGraphs RosterResource 2022 TOR payroll (saved page, accessed 2026-10-21)","5 yr, $110M (2022-26)",14107,7.151
+547943,Hyun Jin Ryu,TOR,2022,20000000,20000000,guaranteed,2,0,0,2023:20000000,,FanGraphs,"FanGraphs RosterResource 2022 TOR payroll (saved page, accessed 2026-10-21)","4 yr, $80M (2020-23)",14444,9.000
+621244,José Berríos,TOR,2022,10714286,18714286,guaranteed,7,0,0,2023:15714286;2024:17714286;2025:18714286;2026:18714286;2027:24714286;2028:24714286,,FanGraphs,"FanGraphs RosterResource 2022 TOR payroll (saved page, accessed 2026-10-21)","7 yr, $131M (2022-28); can opt out after 2026; control may run past 2028",14168,5.044
+579328,Yusei Kikuchi,TOR,2022,16000000,12000000,guaranteed,3,0,0,2023:10000000;2024:10000000,,FanGraphs,"FanGraphs RosterResource 2022 TOR payroll (saved page, accessed 2026-10-21)","3 yr, $36M (2022-24)",20633,3.000
+554340,Yimi García,TOR,2022,4333333,5500000,guaranteed,3,0,0,2023:5333333;2024:6333333,,FanGraphs,"FanGraphs RosterResource 2022 TOR payroll (saved page, accessed 2026-10-21)","3 yr, $16M (2022-24); 2024 option vested",12095,6.149
+542914,Anthony Bass,TOR,2022,3000000,3500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 TOR payroll (saved page, accessed 2026-10-21)","3 yr, $7M (2021-23)",7982,7.010
+475479,David Phelps,TOR,2022,1750000,1750000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 TOR payroll (saved page, accessed 2026-10-21)","1 yr, $1.75M (2022)",6316,9.156
+548389,Ross Stripling,TOR,2022,3790000,,arb,1,0,1,,,FanGraphs,"FanGraphs RosterResource 2022 TOR payroll (saved page, accessed 2026-10-21)","1 yr, $3.79M (2022)",13273,5.115
+643256,Adam Cimber,TOR,2022,1575000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 TOR payroll (saved page, accessed 2026-10-21)","1 yr, $1.575M (2022)",15288,3.156
+670950,Trevor Richards,TOR,2022,1000000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 TOR payroll (saved page, accessed 2026-10-21)","1 yr, $1M (2022)",19309,3.084
+641835,Tim Mayza,TOR,2022,1250000,,arb,4,0,4,,,FanGraphs,"FanGraphs RosterResource 2022 TOR payroll (saved page, accessed 2026-10-21)","1 yr, $1.25M (2022)",15042,2.156
+663423,Trent Thornton,TOR,2022,850000,,arb,4,0,4,,,FanGraphs,"FanGraphs RosterResource 2022 TOR payroll (saved page, accessed 2026-10-21)","1 yr, $850k (2022)",17948,2.130
+605447,Jordan Romano,TOR,2022,728400,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 TOR payroll (saved page, accessed 2026-10-21)","1 yr, $728.4k (2022)",16122,2.051
+657240,Julian Merryweather,TOR,2022,711200,,pre-arb,5,2,3,,,FanGraphs,"FanGraphs RosterResource 2022 TOR payroll (saved page, accessed 2026-10-21)","1 yr, $711.2k (2022)",16703,1.114
+666201,Alek Manoah,TOR,2022,706200,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 TOR payroll (saved page, accessed 2026-10-21)","1 yr, $706.2k (2022)",26410,0.130
+544931,Stephen Strasburg,WSH,2022,35000000,35000000,guaranteed,2,0,0,2023:35000000,,FanGraphs,"FanGraphs RosterResource 2022 WSH payroll (saved page, accessed 2026-10-21)","7 yr, $245M (2020-26)",10131,11.118
+571578,Patrick Corbin,WSH,2022,23416667,23333333,guaranteed,3,0,0,2023:24416667;2024:35416667,,FanGraphs,"FanGraphs RosterResource 2022 WSH payroll (saved page, accessed 2026-10-21)","6 yr, $140M (2019-24)",9323,9.105
+501789,Will Harris,WSH,2022,8000000,8000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 WSH payroll (saved page, accessed 2026-10-21)","3 yr, $24M (2020-22)",3192,8.102
+434671,Aníbal Sánchez,WSH,2022,2000000,2000000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 WSH payroll (saved page, accessed 2026-10-21)","1 yr, $2M (2022)",3284,14.083
+518553,Steve Cishek,WSH,2022,1750000,1750000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 WSH payroll (saved page, accessed 2026-10-21)","1 yr, $1.75M (2022)",6483,10.143
+448281,Sean Doolittle,WSH,2022,1500000,1500000,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 WSH payroll (saved page, accessed 2026-10-21)","1 yr, $1.5M (2022)",1581,9.122
+605452,Joe Ross,WSH,2022,2400000,,arb,1,0,1,,,FanGraphs,"FanGraphs RosterResource 2022 WSH payroll (saved page, accessed 2026-10-21)","1 yr, $2.4M (2022)",12972,5.018
+605218,Carl Edwards Jr.,WSH,2022,1000000,,arb,2,0,2,,,FanGraphs,"FanGraphs RosterResource 2022 WSH payroll (saved page, accessed 2026-10-21)","1 yr, $1M (2022)",13607,5.020
+607200,Erick Fedde,WSH,2022,2150000,,arb,3,0,3,,,FanGraphs,"FanGraphs RosterResource 2022 WSH payroll (saved page, accessed 2026-10-21)","1 yr, $2.15M (2022)",17425,3.099
+663432,Tanner Rainey,WSH,2022,860000,,arb,4,0,4,,,FanGraphs,"FanGraphs RosterResource 2022 WSH payroll (saved page, accessed 2026-10-21)","1 yr, $860k (2022)",17610,2.127
+640448,Kyle Finnegan,WSH,2022,725900,,pre-arb,4,1,3,,,FanGraphs,"FanGraphs RosterResource 2022 WSH payroll (saved page, accessed 2026-10-21)","1 yr, $725.9k (2022)",15009,2.000
+680686,Josiah Gray,WSH,2022,703500,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 WSH payroll (saved page, accessed 2026-10-21)","1 yr, $703.5k (2022)",24580,0.075
+669022,MacKenzie Gore,WSH,2022,700000,,pre-arb,6,3,3,,,FanGraphs,"FanGraphs RosterResource 2022 WSH payroll (saved page, accessed 2026-10-21)","1 yr, $700k (2022)",22201,
+592717,Aaron Sanchez,WSH,2022,395604,395604,FA,1,0,0,,,FanGraphs,"FanGraphs RosterResource 2022 WSH payroll (saved page, accessed 2026-10-21)","1 yr, $395.604k (2022); $2M, prorated; no longer on 40-man / in org",11490,6.032
+596133,Luke Weaver,ARI,2022,2875000,,arb,2,0,2,,1848214,FanGraphs (other team page),"FanGraphs RosterResource 2022 KC payroll, via ARI other payments (saved page, accessed 2026-10-21)","Left ARI midseason; full 2022 contract from KC page; ARI paid $1,848,214. 1 yr, $2.875M (2022)",16918,4.112
+593423,Frankie Montas,ATH,2022,5025000,,arb,2,0,2,,3202747,FanGraphs (other team page),"FanGraphs RosterResource 2022 NYY payroll, via ATH other payments (saved page, accessed 2026-10-21)","Left ATH midseason; full 2022 contract from NYY page; ATH paid $3,202,747. 1 yr, $5.025M (2022)",14309,4.015
+642152,Lou Trivino III,ATH,2022,3000000,,arb,3,0,3,,1912088,FanGraphs (other team page),"FanGraphs RosterResource 2022 NYY payroll, via ATH other payments (saved page, accessed 2026-10-21)","Left ATH midseason; full 2022 contract from NYY page; ATH paid $1,912,088. 1 yr, $3M (2022)",15043,3.163
+519293,Will Smith,ATL,2022,13000000,13333333,guaranteed,2,0,0,2023:13000000,8357143,FanGraphs (other team page),"FanGraphs RosterResource 2022 HOU payroll, via ATL other payments (saved page, accessed 2026-10-21)","Left ATL midseason; full 2022 contract from HOU page; ATL paid $8,357,143. 3 yr, $40M (2020-22)",8048,8.155
+656794,Sean Newcomb,ATL,2022,900000,900000,FA,1,0,0,,69231,FanGraphs (other team page),"FanGraphs RosterResource 2022 CHC payroll, via ATL other payments (saved page, accessed 2026-10-21)","Left ATL midseason; full 2022 contract from CHC page; ATL paid $69,231. 1 yr, $900k (2022); no longer on 40-man / in org",16943,3.121
+605347,Jorge López,BAL,2022,1500000,,arb,3,0,3,,964286,FanGraphs (other team page),"FanGraphs RosterResource 2022 MIN payroll, via BAL other payments (saved page, accessed 2026-10-21)","Left BAL midseason; full 2022 contract from MIN page; BAL paid $964,286. 1 yr, $1.5M (2022)",14527,3.102
+643316,Paul Fry,BAL,2022,850000,850000,FA,1,0,0,,196154,FanGraphs (other team page),"FanGraphs RosterResource 2022 ARI payroll, via BAL other payments (saved page, accessed 2026-10-21)","Left BAL midseason; full 2022 contract from ARI page; BAL paid $196,154. 1 yr, $850k (2022); no longer on 40-man / in org",15832,3.075
+518617,Jake Diekman,BOS,2022,3500000,4000000,FA,1,0,0,,2250000,FanGraphs (other team page),"FanGraphs RosterResource 2022 CWS payroll, via BOS other payments (saved page, accessed 2026-10-21)","Left BOS midseason; full 2022 contract from CWS page; BOS paid $2,250,000. 2 yr, $8M (2022-23)",5003,9.050
+544727,Jeurys Familia,BOS,2022,6000000,6000000,FA,1,0,0,,207692,FanGraphs (other team page),"FanGraphs RosterResource 2022 PHI payroll, via BOS other payments (saved page, accessed 2026-10-21)","Left BOS midseason; full 2022 contract from PHI page; BOS paid $207,692. 1 yr, $6M (2022); no longer on 40-man / in org",5114,9.023
+502085,David Robertson,CHC,2022,3500000,3500000,FA,1,0,0,,2250000,FanGraphs (other team page),"FanGraphs RosterResource 2022 PHI payroll, via CHC other payments (saved page, accessed 2026-10-21)","Left CHC midseason; full 2022 contract from PHI page; CHC paid $2,250,000. 1 yr, $3.5M (2022)",8241,12.104
+571710,Mychal Givens,CHC,2022,3500000,5000000,FA,1,0,0,,2250000,FanGraphs (other team page),"FanGraphs RosterResource 2022 NYM payroll, via CHC other payments (saved page, accessed 2026-10-21)","Left CHC midseason; full 2022 contract from NYM page; CHC paid $2,250,000. 1 yr, $5M (2022)",10430,6.069
+455119,Chris Martin,CHC,2022,2500000,2500000,FA,1,0,0,,1565934,FanGraphs (other team page),"FanGraphs RosterResource 2022 LAD payroll, via CHC other payments (saved page, accessed 2026-10-21)","Left CHC midseason; full 2022 contract from LAD page; CHC paid $1,565,934. 1 yr, $2.5M (2022)",11847,4.133
+622491,Luis Castillo,CIN,2022,7350000,7350000,guaranteed,7,0,0,2023:11400000;2024:24150000;2025:24150000;2026:24150000;2027:24150000,4603846,FanGraphs (other team page),"FanGraphs RosterResource 2022 SEA payroll, via CIN other payments (saved page, accessed 2026-10-21)","Left CIN midseason; full 2022 contract from SEA page; CIN paid $4,603,846. 1 yr, $7.35M (2022); 5 yr, $108M (2023-27), 2028 vesting option; option vests with 180 IP in 2027; control may run past 2028",15689,4.101
+641816,Tyler Mahle,CIN,2022,5200000,,arb,2,0,2,,3342857,FanGraphs (other team page),"FanGraphs RosterResource 2022 MIN payroll, via CIN other payments (saved page, accessed 2026-10-21)","Left CIN midseason; full 2022 contract from MIN page; CIN paid $3,342,857. 1 yr, $5.2M (2022)",16358,4.018
+596112,Robert Stephenson,COL,2022,1280000,,arb,2,0,2,,998681,FanGraphs (other team page),"FanGraphs RosterResource 2022 PIT payroll, via COL other payments (saved page, accessed 2026-10-21)","Left COL midseason; full 2022 contract from PIT page; COL paid $998,681. 1 yr, $1.28M (2022)",13594,4.049
+605242,Michael Fulmer,DET,2022,4950000,,arb,1,0,1,,3182143,FanGraphs (other team page),"FanGraphs RosterResource 2022 MIN payroll, via DET other payments (saved page, accessed 2026-10-21)","Left DET midseason; full 2022 contract from MIN page; DET paid $3,182,143. 1 yr, $4.95M (2022)",13218,5.157
+596057,Daniel Norris,DET,2022,1750000,1750000,FA,1,0,0,,211538,FanGraphs (other team page),"FanGraphs RosterResource 2022 CHC payroll, via DET other payments (saved page, accessed 2026-10-21)","Left DET midseason; full 2022 contract from CHC page; DET paid $211,538. 1 yr, $1.75M (2022); no longer on 40-man / in org",13475,6.073
+543606,Jake Odorizzi,HOU,2022,8000000,4625000,FA,1,0,0,,3214286,FanGraphs (other team page),"FanGraphs RosterResource 2022 ATL payroll, via HOU other payments (saved page, accessed 2026-10-21)","Left HOU midseason; full 2022 contract from ATL page; HOU paid $3,214,286. 3 yr, $29.5M (2021-23), 2023 player option",6397,8.042
+592789,Noah Syndergaard,LAA,2022,21000000,21000000,FA,1,0,0,,13500000,FanGraphs (other team page),"FanGraphs RosterResource 2022 PHI payroll, via LAA other payments (saved page, accessed 2026-10-21)","Left LAA midseason; full 2022 contract from PHI page; LAA paid $13,500,000. 1 yr, $21M (2022)",11762,6.149
+628452,Raisel Iglesias,LAA,2022,10000000,10000000,guaranteed,4,0,0,2023:16000000;2024:16000000;2025:16000000,6428571,FanGraphs (other team page),"FanGraphs RosterResource 2022 ATL payroll, via LAA other payments (saved page, accessed 2026-10-21)","Left LAA midseason; full 2022 contract from ATL page; LAA paid $6,428,571. 4 yr, $58M (2022-25)",17130,6.154
+542914,Anthony Bass,MIA,2022,3000000,3500000,FA,1,0,0,,1928571,FanGraphs (other team page),"FanGraphs RosterResource 2022 TOR payroll, via MIA other payments (saved page, accessed 2026-10-21)","Left MIA midseason; full 2022 contract from TOR page; MIA paid $1,928,571. 3 yr, $7M (2021-23)",7982,7.010
+623352,Josh Hader,MIL,2022,11000000,,arb,2,0,2,,7010989,FanGraphs (other team page),"FanGraphs RosterResource 2022 SD payroll, via MIL other payments (saved page, accessed 2026-10-21)","Left MIL midseason; full 2022 contract from SD page; MIL paid $7,010,989. 1 yr, $11M (2022)",14212,4.115
+656756,Jordan Montgomery,NYY,2022,6000000,,arb,2,0,2,,3857143,FanGraphs (other team page),"FanGraphs RosterResource 2022 STL payroll, via NYY other payments (saved page, accessed 2026-10-21)","Left NYY midseason; full 2022 contract from STL page; NYY paid $3,857,143. 1 yr, $6M (2022)",16511,4.153
+608717,Chris Stratton,PIT,2022,2700000,,arb,2,0,2,,1735714,FanGraphs (other team page),"FanGraphs RosterResource 2022 STL payroll, via PIT other payments (saved page, accessed 2026-10-21)","Left PIT midseason; full 2022 contract from STL page; PIT paid $1,735,714. 1 yr, $2.7M (2022)",13761,4.100
+500779,Jose Quintana,PIT,2022,2000000,2000000,FA,1,0,0,,1285714,FanGraphs (other team page),"FanGraphs RosterResource 2022 STL payroll, via PIT other payments (saved page, accessed 2026-10-21)","Left PIT midseason; full 2022 contract from STL page; PIT paid $1,285,714. 1 yr, $2M (2022)",11423,9.133
+573124,Taylor Rogers,SD,2022,7300000,,arb,1,0,1,,4652747,FanGraphs (other team page),"FanGraphs RosterResource 2022 MIL payroll, via SD other payments (saved page, accessed 2026-10-21)","Left SD midseason; full 2022 contract from MIL page; SD paid $4,652,747. 1 yr, $7.3M (2022)",13449,5.145
+571510,Matthew Boyd,SF,2022,5200000,5200000,FA,1,0,0,,3342857,FanGraphs (other team page),"FanGraphs RosterResource 2022 SEA payroll, via SF other payments (saved page, accessed 2026-10-21)","Left SF midseason; full 2022 contract from SEA page; SF paid $3,342,857. 1 yr, $5.2M (2022)",15440,5.136
+572096,Trevor Rosenthal,SF,2022,1903846,1903846,FA,1,0,0,,296703,FanGraphs (other team page),"FanGraphs RosterResource 2022 MIL payroll, via SF other payments (saved page, accessed 2026-10-21)","Left SF midseason; full 2022 contract from MIL page; SF paid $296,703. 1 yr, $1.904M (2022); $4.5M, prorated",10745,8.001
+456713,Matt Bush,TEX,2022,825000,,arb,3,0,3,,530357,FanGraphs (other team page),"FanGraphs RosterResource 2022 MIL payroll, via TEX other payments (saved page, accessed 2026-10-21)","Left TEX midseason; full 2022 contract from MIL page; TEX paid $530,357. 1 yr, $825k (2022)",1246,3.132
+621366,Ryan Borucki,TOR,2022,825000,,arb,3,0,3,,267445,FanGraphs (other team page),"FanGraphs RosterResource 2022 SEA payroll, via TOR other payments (saved page, accessed 2026-10-21)","Left TOR midseason; full 2022 contract from SEA page; TOR paid $267,445. 1 yr, $825k (2022)",16350,3.060
+608723,Austin Voth,WSH,2022,875000,,arb,4,0,4,,293269,FanGraphs (other team page),"FanGraphs RosterResource 2022 BAL payroll, via WSH other payments (saved page, accessed 2026-10-21)","Left WSH midseason; full 2022 contract from BAL page; WSH paid $293,269. 1 yr, $875k (2022)",15047,2.127
