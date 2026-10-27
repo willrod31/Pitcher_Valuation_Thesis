@@ -3,15 +3,15 @@ Home page: what the project is, how to use the dashboard, and one plain-English 
 
 How it works:
     1. Read every number the page shows from config.py, from the analysis files' own constants (code_constants,
-       which reads the source instead of importing it), and from dashboard/data/ (stabilization.csv,
-       war_model.json, pitcher_report_data.csv, metric_drivers.csv). Nothing is typed in by hand.
-    2. One box per metric, always in the same order: what it is, why it matters for the thesis, how to read the
-       number, how it's built (the same numbered steps as that metric's analysis file, each formula followed by
-       a sentence in words), what each number in the formula means, what drives it most, and its limits.
+       which reads the source instead of importing it), and from dashboard/data/<season>/ (stabilization.csv,
+       war_model.json, pitcher_report_data.csv). Nothing is typed in by hand.
+    2. One short box per metric: what it is (the "IN SIMPLE TERMS" text of docs/metric_explanations.py), how to
+       read the number, and a few plain steps for how it's calculated. The full step-by-step version is in
+       docs/metric_explanations.py and each metric's analysis file.
     3. A glossary of the baseball and statistics terms the dashboard uses.
 If a formula in analysis/ changes, update its box here too.
 
-Inputs: config.py, analysis/*.py (read as text), dashboard/data/<season>/ and dashboard/data/metric_drivers.csv.
+Inputs: config.py, analysis/*.py (read as text), dashboard/data/<season>/.
 Outputs: the Home page. Run with: streamlit run dashboard/app.py
 """
 import ast
@@ -29,14 +29,12 @@ from colors import legend_html  # noqa: E402
 from season import (  # noqa: E402
     SEASONS, coverage_note, data_dir, fit_years, is_out_of_sample, projection_note, selected_season, war_model as season_war_model,
 )
-from pitch_types import PITCH_TYPE_ABBR, pitch_abbr, pitch_label, pitch_name  # noqa: E402
+from pitch_types import PITCH_TYPE_ABBR, pitch_label, pitch_name  # noqa: E402
 from config import (  # noqa: E402
-    ARB_PCT_OF_MARKET, COMMAND_METRIC, DISCOUNT_RATE, DOLLARS_PER_WAR, DOLLARS_PER_WAR_GROWTH, FIPR9_REGRESSION_IP,
-    INJURY_ARM_STINTS_FOR_MAX_RISK, INJURY_DAYS_FOR_MAX_RISK, INJURY_LOOKBACK_SEASONS, INJURY_SHRINKAGE,
-    LEAGUE_AVG_STARTER_WAR, LEAGUE_MIN_SALARY_BY_YEAR, MAX_CONTROL_YEARS, MIN_IP_FOR_RATE_MODEL, MIN_PITCHES_DASHBOARD,
-    MIN_PITCHES_FOR_INCLUSION, MIN_PITCHES_PER_TYPE_FOR_SCALE, MIN_PITCHES_PER_TYPE_TO_DISPLAY, MIN_PITCHES_TO_DISPLAY,
-    DOLLARS_PER_WAR_YEAR, REPLACEMENT_LEVEL_WAR, STARTER_GS_SHARE, TOTAL_PITCHER_WAR, VOLATILITY_SHRINKAGE, WAR_MODEL,
-    WAR_PER_TALENT_Z,
+    ARB_PCT_OF_MARKET, COMMAND_METRIC, DISCOUNT_RATE, DOLLARS_PER_WAR, DOLLARS_PER_WAR_GROWTH,
+    INJURY_ARM_STINTS_FOR_MAX_RISK, INJURY_DAYS_FOR_MAX_RISK, INJURY_LOOKBACK_SEASONS, LEAGUE_AVG_STARTER_WAR,
+    MAX_CONTROL_YEARS, MIN_PITCHES_DASHBOARD, MIN_PITCHES_FOR_INCLUSION, MIN_PITCHES_PER_TYPE_TO_DISPLAY,
+    DOLLARS_PER_WAR_YEAR, TOTAL_PITCHER_WAR, WAR_MODEL, WAR_PER_TALENT_Z,
 )
 
 SEASON = selected_season()   # the sidebar's Season selector (app.py)
@@ -45,10 +43,6 @@ ROOT = Path(__file__).parent.parent
 DATA_DIR = data_dir(SEASON)                            # dashboard/data/<SEASON>/
 STABILIZATION_PATH = DATA_DIR / "stabilization.csv"   # copy of data/results/stabilization.csv (2025 k, every season)
 WAR_MODEL_PATH = DATA_DIR / "war_model.json"           # the model that projected NEXT_SEASON (frozen, or a past season's single-pair model)
-DRIVERS_PATH = DATA_DIR.parent / "metric_drivers.csv"  # analysis/metric_drivers.py (one season, shown for every season)
-# $/WAR in a season = DOLLARS_PER_WAR x (1 + growth) ** (season - DOLLARS_PER_WAR_YEAR) (risk_adjusted_value.dollars_per_war)
-GROWTH_YEARS_NEXT = NEXT_SEASON - DOLLARS_PER_WAR_YEAR   # growth years in the first valued season
-GROWTH_YEARS_NOW = SEASON - DOLLARS_PER_WAR_YEAR
 
 # Metric names exactly as the Dashboard page shows them (dashboard/pitchers.py)
 STUFF_LABEL = "Stuff+"
@@ -57,14 +51,12 @@ VOLATILITY_LABEL = "Volatility percentile"
 PROJ_WAR_LABEL = f"Projected {NEXT_SEASON} WAR"
 ACTUAL_WAR_LABEL = f"{SEASON} FIP-WAR (actual)"
 SURPLUS_LABEL = f"Multi-yr surplus from {NEXT_SEASON}"
-SURPLUS_ACTUAL_LABEL = f"{SEASON} surplus, actual"
 OUT_OF_SAMPLE = is_out_of_sample(SEASON)   # a past season: single-pair model, next season's answer known
 MODEL_NOTE = projection_note(SEASON)
 # the calibration itself (pairs it was fit and tested on) is described by the frozen model, whichever season is shown
 CALIBRATION = next((m for m in map(season_war_model, SEASONS) if m and not m.get("out_of_sample")), {})
 CALIBRATION_PAIRS = CALIBRATION.get("final_fit", "").split(" + ") if CALIBRATION.get("final_fit") else []
 CALIBRATION_YEARS = fit_years(CALIBRATION)
-TRAIN_PAIR = CALIBRATION.get("train_pair", "the first pair").replace("->", "→")
 TEST_PAIR = CALIBRATION.get("test_pair", "the second pair").replace("->", "→")
 REPORT_PATH = DATA_DIR / "pitcher_report_data.csv"
 HAS_CONTRACTS = REPORT_PATH.exists() and pd.read_csv(REPORT_PATH, usecols=["Salary_M"])["Salary_M"].notna().any()
@@ -98,32 +90,24 @@ def tx(label: str) -> str:
     return r"\text{" + label.replace("%", r"\%").replace("$", r"\$") + "}"
 
 
-def tex_num(x, digits: int | None = None) -> str:
-    """A number for st.latex, with thousands separators KaTeX won't space out like list commas."""
-    text = f"{x:,}" if digits is None else f"{x:,.{digits}f}"
-    return text.replace(",", "{,}")
+def metric_box(title: str, what: str, read: str, steps: list, expanded: bool = False, note=None):
+    """One metric's box: what it is, how to read it, then a few plain steps (text, or (text, formula, words))."""
+    with st.expander(title, expanded=expanded):
+        st.markdown(what)
+        st.markdown(f"**How to read it:** {read}")
+        if note:
+            note()
+        st.markdown("**How it's calculated**")
+        for i, step in enumerate(steps, start=1):
+            text, *formula = step if isinstance(step, tuple) else (step,)
+            st.markdown(f"{i}. {text}")
+            if formula:
+                st.latex(formula[0])
+                st.caption(formula[1])
 
 
-def how_its_calculated(steps: list[tuple]):
-    """Bold heading, then numbered steps: (text, (formula, what it does in words), ...)."""
-    st.markdown("**How it's built**")
-    for i, (text, *formulas) in enumerate(steps, start=1):
-        st.markdown(f"{i}. {text}")
-        for formula, words in formulas:
-            st.latex(formula)
-            st.caption(words)
 
-
-def what_numbers_mean(rows: list[tuple]):
-    """**What each number means**: a bullet list for up to three (number, meaning) rows, a table for more."""
-    st.markdown("**What each number in the formula means**")
-    if len(rows) <= 3:
-        st.markdown("\n".join(f"- **{number}**: {meaning}" for number, meaning in rows))
-    else:
-        st.dataframe(pd.DataFrame(rows, columns=["Number", "What it means"]), hide_index=True, width="stretch")
-
-
-st.title("Valuing Pitcher Volatility")
+st.title("Pitcher Valuation Dashboard")
 st.markdown("#### Finding undervalued pitchers for low-payroll MLB teams")
 
 st.page_link("pitchers.py", label="Open the dashboard", icon=":material/arrow_forward:")
@@ -190,58 +174,20 @@ st.markdown(
 # Every number below comes from config.py, from an analysis/ file's constants (code_constants), or from
 # dashboard/data/. The exceptions are numbers written inline in the analysis code itself: FanGraphs' FIP-WAR
 # constants (analysis/fip_war.py), the 0.5 / 0.5 injury-risk weights (risk_adjusted_value.injury_risk_score)
-# and the 100 + 10z scale (utils.scale_100).
-STUFF_FEATURES, STUFF_FOLDS, MIN_SWINGS_TO_TRAIN, MIN_SWINGS_FOR_BEST = code_constants(
-    "analysis/stuff_plus_proxy.py", "FEATURES", "N_FOLDS", "MIN_PITCHES_PER_TYPE", "MIN_SAMPLE_FOR_SUMMARY_V1")
-STUFF_MODEL, STUFF_PITCH_GROUPS, STUFF_INNER_FOLDS, COMPARABLE_NEIGHBORS, COMPARABLE_DISTANCE_PCT = code_constants(
-    "analysis/stuff_plus_proxy.py", "STUFF_MODEL", "PITCH_GROUPS", "N_INNER_FOLDS", "COMPARABLE_NEIGHBORS",
-    "COMPARABLE_DISTANCE_PCT")
-MIN_STUFF_FINAL, MAX_STUFF_FINAL, SQUARED_FEATURES = code_constants(
-    "analysis/stuff_plus_proxy.py", "MIN_STUFF_FINAL", "MAX_STUFF_FINAL", "SQUARED_FEATURES")
-LOCATION_FEATURES, LOCATION_FOLDS, PITCH_GROUPS, PLATE_HALF_WIDTH_FT = code_constants(
-    "analysis/location_plus_proxy.py", "FEATURES", "N_FOLDS", "PITCH_GROUPS", "PLATE_HALF_WIDTH_FT")
-EDGE_BAND, MEATBALL_MAX = code_constants("analysis/asymmetric_upside.py", "EDGE_BAND", "MEATBALL_MAX")
+# and the 100 + 10z scale (utils.scale_100). The full step-by-step version is in docs/metric_explanations.py.
+(MIN_SWINGS_FOR_BEST,) = code_constants("analysis/stuff_plus_proxy.py", "MIN_SAMPLE_FOR_SUMMARY_V1")
 MIN_PITCHES_PER_START, MIN_STARTS, MIN_PITCHES_PER_RELIEF, MIN_RELIEF_APPEARANCES = code_constants(
     "analysis/volatility_discount.py", "MIN_PITCHES_PER_START", "MIN_STARTS", "MIN_PITCHES_PER_RELIEF",
     "MIN_RELIEF_APPEARANCES")
 (ARM_BODY_PARTS,) = code_constants("analysis/injury_history.py", "ARM_BODY_PARTS")
-N_REPEATS, PITCH_GRID, PA_GRID, APPEARANCE_GRID = code_constants(
-    "analysis/stabilization.py", "N_REPEATS", "PITCH_GRID", "PA_GRID", "APPEARANCE_GRID")
 (UPSIDE_TARGET_INDEX,) = code_constants("analysis/export_report_data.py", "UPSIDE_TARGET_INDEX")
-
-# Plain names for the model inputs (unknown names fall back to the code's own name)
-STUFF_FEATURE_NAMES = {
-    "release_speed": "speed", "ivb": "rise (induced vertical break)", "hb": "sideways break",
-    "release_spin_rate": "spin rate", "spin_axis": "spin direction", "release_extension": "extension",
-    "release_pos_z": "release height", "release_pos_x": "release side", "effective_speed": "speed as the batter sees it",
-}
-LOCATION_FEATURE_TEX = {
-    "norm_x": r"\text{norm}_x", "norm_z": r"\text{norm}_z", "balls": r"\text{balls}", "strikes": r"\text{strikes}",
-    "same_hand": r"\text{same hand}",
-}
-WAR_FEATURE_TEX = {
-    "FIPR9_reg": r"\text{FIPR9}_{\text{reg}}", "KminusBBPct": r"\text{K-BB\%}", "StuffPlus": tx(STUFF_LABEL),
-    "LocationPlus": tx(LOCATION_LABEL), "Starter": r"\text{Starter}", "IP": r"\text{IP}", "Age": r"\text{Age}",
-    "InjuryRiskScore": r"\text{Risk}", "VolatilityScore_Reg": r"\text{Score}_{\text{reg}}",
-    "UpsideIndex": r"\text{Upside}", "LegacyProjectedWAR": r"\text{WAR}_{\text{old}}",
-}
-REGRESSED_TEX = r"\frac{{n \cdot {obs} + k \cdot {mean}}}{{n + k}}"   # .format(obs=..., mean=...)
 
 war_model = json.loads(WAR_MODEL_PATH.read_text()) if WAR_MODEL_PATH.exists() else None
 report = pd.read_csv(REPORT_PATH) if REPORT_PATH.exists() else None
 qualified = report[report["Qualified"].astype(bool)].drop_duplicates("PitcherId") if report is not None else None
-drivers = pd.read_csv(DRIVERS_PATH) if DRIVERS_PATH.exists() else None
-
-
-def linear_tex(coefs: dict | None, features: list[str]) -> str:
-    """b0 + b1 x1 + ... with the fitted coefficients (beta symbols if they aren't exported)."""
-    if coefs is None:
-        return r"\beta_0 " + " ".join(rf"+ \beta_{i}\,{WAR_FEATURE_TEX.get(f, tx(f))}" for i, f in enumerate(features, 1))
-    terms = [f"{coefs['const']:.3g}"]
-    for f in features:
-        c = coefs[f]
-        terms.append(rf"{'-' if c < 0 else '+'} {abs(c):.3g}\,{WAR_FEATURE_TEX.get(f, tx(f))}")
-    return " ".join(terms)
+stabilization = pd.read_csv(STABILIZATION_PATH) if STABILIZATION_PATH.exists() else None
+k_of = dict(zip(stabilization["metric"], stabilization["k"])) if stabilization is not None else {}
+k_stuff, k_location = k_of.get("StuffPlus_Scaled", float("nan")), k_of.get("LocationPlus", float("nan"))
 
 
 def stabilization_label(metric: str) -> str:
@@ -265,251 +211,76 @@ def share_of_qualified(column: str, at_least: float | None = None, at_most: floa
     return f"{share:.0%}"
 
 
-def sd_text(sd: float, unit: str) -> str:
-    """One typical step of a trait in its own units, e.g. '2.4 mph' or '2.5 percentage points'."""
-    if unit.startswith("share") or unit.startswith("walks per"):
-        return f"{sd * 100:.1f} percentage points"
-    digits = 0 if sd >= 20 else 1 if sd >= 1 else 2
-    return f"{sd:,.{digits}f} {unit}"
-
-
-def drivers_text(metric: str, note: str = "") -> str:
-    """The two biggest drivers of `metric` in plain words, from metric_drivers.csv."""
-    if drivers is None or metric not in set(drivers["metric"]):
-        return "Not exported yet (run python -m analysis.metric_drivers)."
-    rows = drivers[drivers["metric"] == metric].sort_values("unique_r2", ascending=False)
-    label = rows["metric_label"].iloc[0]
-    sentences = []
-    for i, (_, r) in enumerate(rows.head(2).iterrows()):
-        verb = "raises" if r["coefficient"] > 0 else "lowers"
-        lead = (f"{r['driver_label'][0].upper()}{r['driver_label'][1:]} matters most for {label}" if i == 0
-                else f"Next is {r['driver_label']}")
-        sentences.append(f"{lead}: one typical step more (about {sd_text(r['driver_sd'], r['driver_unit'])}) {verb} "
-                         f"{label} by about {abs(r['coefficient']):.2f} of a typical step, and it alone explains "
-                         f"{r['unique_r2']:.0%} of the differences between pitchers.")
-    first = rows.iloc[0]
-    sentences.append(f"Together these traits explain {first['model_r2']:.0%} ({first['n']:,} pitchers, "
-                     f"{first['Season']} season).")
-    return " ".join(sentences) + (f" {note}" if note else "")
-
-
-def metric_box(title: str, *, what: str, why: str, read: str, steps: list[tuple], numbers: list[tuple],
-               drives: str, limit: str, expanded: bool = False, before_steps=None):
-    """One metric's box, always in the same seven parts."""
-    with st.expander(title, expanded=expanded):
-        st.markdown(f"**What it is.** {what}")
-        st.markdown(f"**Why it matters for the thesis.** {why}")
-        st.markdown(f"**How to read the number.** {read}")
-        if before_steps:
-            before_steps()
-        how_its_calculated(steps)
-        what_numbers_mean(numbers)
-        st.markdown(f"**What drives it most.** {drives}")
-        st.markdown(f"**Limits.** {limit}")
-
-
-stabilization = pd.read_csv(STABILIZATION_PATH) if STABILIZATION_PATH.exists() else None
-k_of = dict(zip(stabilization["metric"], stabilization["k"])) if stabilization is not None else {}
-k_stuff, k_location = k_of.get("StuffPlus_Scaled", float("nan")), k_of.get("LocationPlus", float("nan"))
-k_stuff_types = [k for m, k in k_of.items() if m.startswith("StuffPlus_Scaled[") and pd.notna(k)]
-
 st.header("What each stat means")
 st.markdown(
     f"""
-Every box below follows the same order: what it is, why it matters, how to read it, how it's built (the same
-steps as the code), what each number means, what drives it most, and its limits.
-
-**How to read the numbers**
-
-- **Qualified pitchers** = pitchers with **{MIN_PITCHES_FOR_INCLUSION}+ pitches** in a season. League averages and
-  spreads come only from them, so a pitcher with few pitches never moves anyone else's grade.
-- **A "typical step"** is one **standard deviation** (SD): how far pitchers usually sit from the average. A
-  **z-score** counts those steps: z = +1 means one typical step above average.
-- **The "100 + 10z" scale** (Stuff+, Location+): 100 = league average, and every 10 points is one typical step.
-- **n** = a pitcher's sample (pitches, batters faced or games); **k** = how big a sample a stat needs before we
-  trust it half (see Small-sample adjustment).
-- **Standardized coefficient** (in "What drives it most"): if one trait moves one typical step and the others stay
-  the same, the metric moves this many typical steps.
-- **R²**: the share of the differences between pitchers that a model explains, from 0 (none) to 1 (all);
-  "explains on its own" = the part only that one trait explains.
+- **Qualified pitchers** = pitchers with {MIN_PITCHES_FOR_INCLUSION}+ pitches in a season. League averages come only
+  from them.
+- **A "typical step"** is one standard deviation: how far pitchers usually sit from the average. A **z-score**
+  counts those steps (z = +1 means one step above average).
+- **Stuff+ and Location+** use a **100 + 10z** scale: 100 = league average, and every 10 points is one typical step.
 """
 )
-st.latex(r"z(x) = \frac{x - \text{average of qualified pitchers}}{\text{SD of qualified pitchers}}")
-st.caption("A z-score: how many typical steps a value is above (+) or below (-) the average.")
 
 # ── Stuff+ (analysis/stuff_plus_proxy.py) ──────────────────────────────────────
-shape = ", ".join(STUFF_FEATURE_NAMES.get(f, f) for f in STUFF_FEATURES)
-squared = [STUFF_FEATURE_NAMES.get(f, f) for f in SQUARED_FEATURES]
-squared = ", ".join(squared[:-1]) + " and " + squared[-1] if len(squared) > 1 else "".join(squared)
-stuff_groups = "; ".join(f"{g}: {', '.join(pitch_abbr(c) for c in codes)}" for g, codes in STUFF_PITCH_GROUPS.items())
-tuned = f"tuned by an inner {STUFF_INNER_FOLDS}-fold split of the training pitchers only"
-stuff_model_text = {
-    "A": "a gradient-boosted model (many small decision trees) for each pitch type",
-    "B": "a logistic regression for each pitch type",
-    "C": f"a gradient-boosted model ({tuned}) for each pitch type",
-    "D": f"one gradient-boosted model per pitch group ({stuff_groups}), {tuned}",
-}[STUFF_MODEL]
 metric_box(
     f"**{STUFF_LABEL}**: how hard a pitch is to hit", expanded=True,
-    what=("Stuff+ measures how hard a pitch is for a batter to hit, judged only by how the ball moves: how fast it "
-          "is thrown, how much it curves or drops, and how it spins. It estimates how often batters who swing at "
-          "that pitch will miss it completely. 100 is the league average; higher is better."),
-    why=("Stuff+ is the one grade of ours that predicts next season's value beyond this season's results: in the "
-         f"{PROJ_WAR_LABEL} model it still lowers expected runs allowed after this season's results are known, "
-         "while Location+ adds little or nothing. It is also the first half of the Upside Index."),
-    read=(f"100 is average, and every 10 points is one typical step. Stuff+ 110 means about one typical step above "
-          f"average: in {SEASON}, {share_of_qualified('StuffPlus_Final', at_least=110)} of qualified pitchers were "
-          f"at 110 or higher, and {share_of_qualified('StuffPlus_Final', at_most=90)} at 90 or lower. On the "
-          "Pitcher Report each kind of pitch (fastball, slider, ...) is graded only against the same kind."),
+    what=("Stuff+ measures how hard a pitch is for a batter to hit, judged only by how the ball moves: how fast it is "
+          "thrown, how much it curves or drops, and how it spins. It estimates how often batters who swing at that "
+          "pitch will miss it completely. Where the pitch was thrown doesn't count (that is Location+)."),
+    read=(f"100 is average; higher is better. 110 is very good: in {SEASON}, "
+          f"{share_of_qualified('StuffPlus_Final', at_least=110)} of qualified pitchers were at 110 or higher."),
     steps=[
-        ("**Mirror lefties.** Statcast measures sideways movement, release side and spin direction from the "
-         "catcher's view, so a lefty's slider and a righty's slider have opposite signs. We flip lefties into the "
-         "right-hander's frame so both are graded on the same terms.",
-         (r"\text{HB} \to -\text{HB}, \qquad x \to -x, \qquad \theta \to (360 - \theta) \bmod 360",
-          "For a left-hander: sideways break (HB) and release side (x) change sign, and the spin direction θ "
-          "(degrees) is mirrored.")),
-        (f"**Scale the traits** ({shape}) so each has average 0 and spread 1. Big-number traits like spin rate "
-         "(thousands of rpm) then don't drown out small ones like extension (a few feet).",
-         (r"x_{\text{scaled}} = \frac{x - \text{average}}{\text{SD}}",
-          "Each trait is counted in typical steps from its own average.")),
-        (f"**Train on swings only.** p = the chance a swing misses, from {stuff_model_text}. Squared terms for "
-         f"{squared} let it capture \"more is better, up to a point\". This model type predicted new pitchers best "
-         f"of four we tested (a rule set before looking). A pitch type needs {MIN_SWINGS_TO_TRAIN}+ league-wide "
-         "swings to get a model.",
-         (r"p = P(\text{whiff} \mid \text{swing}) = \frac{1}{1 + e^{-(b_0 + b_1 x_1 + b_2 x_2 + \cdots)}}",
-          "The model gives each trait x a weight b; a positive weight means more of that trait makes a miss more "
-          "likely. The formula turns the weighted total into a chance between 0 and 1.")),
-        (f"**Score out of fold.** Pitchers are split into {STUFF_FOLDS} groups; each group is scored by a model "
-         f"trained on the other {STUFF_FOLDS - 1}, so a pitcher is never graded by a model that saw his own pitches. "
-         "Every pitch he threw is scored, not just the ones swung at.",
-         (r"p_{\text{pitch}} = \text{model trained without his group}(\text{traits})",
-          "Each pitch gets a whiff chance from a model that never saw him.")),
-        (f"**Grade within the pitch type.** His average whiff chance for each pitch type j becomes a z-score against "
-         f"qualified pitchers' same pitch type (rows with {MIN_PITCHES_PER_TYPE_FOR_SCALE}+ pitches of it).",
-         (rf"z_j = z\left(\bar p_j\right), \qquad {tx(STUFF_LABEL)}_j = 100 + 10 \cdot z_j",
-          "A slider is compared only with sliders: z_j says how many typical steps his slider's whiff chance is "
-          "above other pitchers' sliders.")),
-        ("**Combine his pitches.** Average his per-type z-scores, weighting each by n_j, how many of that pitch he "
-         "threw, then put the result on the 100 + 10z scale against qualified pitchers.",
-         (rf"\bar z = \frac{{\sum_j n_j \, z_j}}{{\sum_j n_j}}, \qquad {tx(STUFF_LABEL)}_{{\text{{scaled}}}} = 100 + 10 \cdot z(\bar z)",
-          "Pitches he throws more count more. Averaging z-scores keeps one extreme pitch from dominating.")),
-        (f"**Small samples.** Pull toward 100 by sample size (n = his pitches). Blank under {MIN_PITCHES_TO_DISPLAY} "
-         f"pitches ({MIN_PITCHES_PER_TYPE_TO_DISPLAY} for one pitch type).",
-         (tx(STUFF_LABEL) + r"_{\text{reg}} = " + REGRESSED_TEX.format(obs=tx(STUFF_LABEL) + r"_{\text{scaled}}",
-                                                                      mean="100").replace("k", tex_num(k_stuff, 1)),
-          "With only a few pitches his grade leans toward 100; with many, it is his own number.")),
-        ("**Unusual pitches.** If almost no other pitcher throws anything shaped like his pitch (a submarine sinker, "
-         "say), the model is guessing, so the grade is pulled toward 100 in proportion to how unusual it is. c = the "
-         f"share of each pitch's {COMPARABLE_NEIGHBORS} most similar other-pitcher pitches that are close.",
-         (rf"{tx(STUFF_LABEL)} = 100 + \left({tx(STUFF_LABEL)}_{{\text{{reg}}}} - 100\right) \cdot c",
-          "c = 1 (a common shape) keeps the grade; c = 0 (nothing like it) turns it into 100.")),
+        "Left-handers are flipped so their pitches are measured the same way as right-handers'.",
+        "A model studies every swing in the league to learn which speeds, movements and spins lead to misses. Each "
+        "pitcher is graded by a version of the model that never saw his own pitches.",
+        ("Each of his pitches is compared only with the same kind of pitch (sliders with sliders), then combined, "
+         "with the pitches he throws most counting most.",
+         rf"{tx(STUFF_LABEL)} = 100 + 10 \times z",
+         "z = how many typical steps his pitches are above (+) or below (-) average."),
+        f"With very few pitches the grade is pulled toward 100 (Stuff+ settles after only about {k_stuff:.0f} "
+        "pitches). A pitch shape almost nobody else throws is also pulled toward 100, because the model is guessing.",
     ],
-    numbers=[
-        ("100 and 10", "the scale: 100 = league average, 10 points = one typical step (standard deviation)"),
-        (f"k = {k_stuff:.1f}" + (f" (pitch types {min(k_stuff_types):.1f} to {max(k_stuff_types):.1f})" if k_stuff_types else ""),
-         f"after just about {k_stuff:.0f} pitches his own number counts as much as the league average; Stuff+ "
-         "settles very fast"),
-        (f"{STUFF_FOLDS} groups", "pitchers are split this many ways so no one is graded by a model that saw him"),
-        (f"{MIN_SWINGS_TO_TRAIN} swings", "a pitch type needs this many league-wide swings before it gets a model"),
-        (f"{COMPARABLE_NEIGHBORS} neighbors, {COMPARABLE_DISTANCE_PCT}th percentile",
-         f"for each pitch we look at the {COMPARABLE_NEIGHBORS} most similar pitches by other pitchers; \"close\" = "
-         f"nearer than {COMPARABLE_DISTANCE_PCT}% of all such distances"),
-        (f"{MIN_STUFF_FINAL} to {MAX_STUFF_FINAL}", "a backstop: only if a qualified pitcher's final grade falls "
-         "outside this range are the most extreme grades capped"),
-    ],
-    drives=drivers_text("StuffPlus"),
-    limit=("It grades how a pitch moves, not what happened to it, and it predicts whiffs on pitchers it never saw "
-           "only weakly; very unusual arm angles can still produce extreme grades."),
 )
 
 # ── Location+ (analysis/location_plus_proxy.py) ────────────────────────────────
-groups = "; ".join(f"{g.lower()}: {', '.join(pitch_abbr(c) for c in codes)}" for g, codes in PITCH_GROUPS.items())
-location_inputs = ", ".join(LOCATION_FEATURE_TEX.get(f, tx(f)) for f in LOCATION_FEATURES)
 metric_box(
     f"**{LOCATION_LABEL}**: how well he aims",
     what=("Location+ measures how well a pitcher aims, meaning whether he throws the ball to spots that are hard to "
-          "hit for the situation (for example, close to the edge of the strike zone when he is ahead). 100 is the "
-          "league average; higher is better."),
-    why=("It is the second half of the Upside Index: it tells us when a pitcher's aim, not his pitches, is what holds "
-         "him back. It shares no inputs with Stuff+, so the two can be compared directly."),
-    read=(f"Same scale as Stuff+: 100 = average, 10 points = one typical step. Location+ 90 means one typical step "
-          f"below average (his locations cost runs): in {SEASON}, {share_of_qualified('LocationPlus_Reg', at_most=90)} "
-          f"of qualified pitchers were at 90 or lower and {share_of_qualified('LocationPlus_Reg', at_least=110)} at "
-          "110 or higher."),
+          "hit for the situation (for example, close to the edge of the strike zone when he is ahead). It uses only "
+          "where the pitch crossed the plate and the count."),
+    read="Same scale as Stuff+: 100 is average; higher is better. Below 100 means his locations cost runs.",
     steps=[
-        ("**Normalize location.** Sideways location is divided by half the plate width and flipped for left-handed "
-         "hitters (so \"inside\" is always the same side). Height is measured against each batter's own strike zone.",
-         (r"\text{norm}_x = s \cdot \frac{\text{plate}_x}{w}, \qquad \text{norm}_z = \frac{\text{plate}_z - m}{h}",
-          f"w = half the plate width ({PLATE_HALF_WIDTH_FT * 12:.1f} inches), s = -1 for a left-handed batter, m and h "
-          "= the middle and half-height of his strike zone. 0 = the middle; ±1 = the edge.")),
-        ("**Set the target.** Every pitch's run value: how much it changed the batting team's expected runs (lower "
-         "is better for the pitcher). For balls in play we use an EXPECTED run value from exit speed and launch angle "
-         "(xwOBA), so a bloop single or a line-drive out isn't credited to aim.",
-         (r"r_{\text{ball in play}} = a_0 + a_1 \cdot \text{xwOBA} + a_2 \cdot \text{balls} + a_3 \cdot \text{strikes}",
-          "One league-wide line turns the quality of contact (and the count) into expected runs.")),
-        (f"**Train gradient-boosted trees** (many small yes/no decision trees, each fixing the last one's mistakes) "
-         f"for each pitch group ({groups}). Inputs: location, balls, strikes, and whether pitcher and batter are on "
-         "the same side.",
-         (rf"\hat r = f_{{\text{{group}}}}({location_inputs})",
-          "The trees learn how many runs a pitch at that spot, in that count, usually costs.")),
-        (f"**Score out of fold**, the same {LOCATION_FOLDS}-group method as Stuff+.",
-         (r"\hat r_{\text{pitch}} = \text{model trained without his group}",
-          "No pitcher is graded by a model that saw his pitches.")),
-        (f"**Grade.** Average his predicted run value per pitch, flip the sign so higher = better, then put it on "
-         f"the 100 + 10z scale against qualified pitchers ({MIN_PITCHES_FOR_INCLUSION}+ pitches).",
-         (rf"{tx(LOCATION_LABEL)}_{{\text{{scaled}}}} = 100 + 10 \cdot z\left(-\,\overline{{\hat r}}\right)",
-          "Fewer runs expected from his locations = a higher grade.")),
-        ("**Small samples.** Pull toward 100 by sample size (n = his pitches; each pitch type uses its own k).",
-         (tx(LOCATION_LABEL) + " = " + REGRESSED_TEX.format(obs=tx(LOCATION_LABEL) + r"_{\text{scaled}}", mean="100")
-          .replace("k", tex_num(k_location, 0)),
-          "Aim needs many pitches before his own number can be trusted.")),
+        "Where each pitch crossed the plate is measured against that batter's own strike zone.",
+        "Each pitch gets a run value: how much it helped or hurt the pitcher. On balls hit into play we use how hard "
+        "and at what angle the ball was hit, so lucky bloops and unlucky line drives don't count.",
+        "A model learns how many runs a pitch at each spot, in each count, usually costs (again graded by a model "
+        "that never saw his pitches).",
+        ("His pitches are averaged, so fewer runs expected = a higher grade.",
+         rf"{tx(LOCATION_LABEL)} = 100 + 10 \times z",
+         "z = how many typical steps his locations are better (+) or worse (-) than average."),
+        f"Aim takes a long time to trust: it takes about {k_location:.0f} pitches before his own number counts as "
+        "much as the league average, so small samples are pulled toward 100.",
     ],
-    numbers=[
-        (f"k = {k_location:.0f}", f"it takes about {k_location:.0f} pitches before his aim counts as much as the league "
-         f"average, far longer than Stuff+ (k = {k_stuff:.0f})"),
-        (f"{PLATE_HALF_WIDTH_FT * 12:.1f} inches", "half the width of home plate (17 inches), used to scale sideways location"),
-        (f"{MIN_PITCHES_FOR_INCLUSION} pitches", "the qualified pool the average and typical step come from"),
-    ],
-    drives=drivers_text("LocationPlus", "These are the older, simpler aim stats: walks per batter, pitches on the "
-                        "edge of the zone, pitches down the middle."),
-    limit="It can't see where the catcher wanted the ball, so it grades location, not whether he hit his spot.",
 )
 
 # ── Upside Index (analysis/asymmetric_upside.py) ───────────────────────────────
 COMMAND_TEX = tx(LOCATION_LABEL) if COMMAND_METRIC == "location_plus" else r"\text{CommandProxy}"
-command_note = ("" if COMMAND_METRIC == "location_plus"
-                else " The aim input is currently the legacy command proxy (config.COMMAND_METRIC).")
 metric_box(
     "**Upside Index**: great pitches, weaker aim",
     what=("The Upside Index compares how good a pitcher's pitches are (Stuff+) with how well he aims them "
-          "(Location+). A high number means his pitches are already good and his aim is what holds him back."),
-    why=("This is the thesis target: pitchers whose pitches are good but whose aim is holding them back. Aim is "
-         "usually easier to coach than raw pitch quality, so these pitchers can be bargains. On the Stuff+ vs. "
-         "Location+ charts they sit in the bottom right."),
-    read=(f"0 = his pitches and his aim are equally good. +1 = his Stuff+ is one typical step better than his "
-          f"Location+. Example: Stuff+ 120 (z = +2) and Location+ 90 (z = -1) gives Upside = +3. In {SEASON}, "
+          "(Location+). A high number means his pitches are already good and his aim is what holds him back. Aim is "
+          "usually easier to coach than raw pitch quality, so these pitchers can be bargains."),
+    read=(f"0 = pitches and aim equally good. Above 0 = his pitches are better than his aim (the target). In {SEASON}, "
           f"{share_of_qualified('AsymmetricUpsideIndex_Reg', at_least=UPSIDE_TARGET_INDEX)} of qualified pitchers "
-          f"were at {UPSIDE_TARGET_INDEX:+.1f} or higher (the \"upside target\" group on the League page)."),
+          f"were at {UPSIDE_TARGET_INDEX:+.1f} or higher."),
     steps=[
-        ("**Turn both grades into z-scores** against qualified pitchers. The small-sample grades are used; the "
-         "average and spread come from the qualified pitchers' unadjusted grades." + command_note,
-         (r"z(\text{grade}) = \frac{\text{grade} - \text{average}}{\text{SD}}",
-          "Both grades are now in typical steps, so they can be subtracted.")),
-        ("**Upside = z(Stuff+) - z(Location+).** Positive = his pitches are better than his aim (the target profile).",
-         (rf"\text{{Upside}} = z({tx(STUFF_LABEL)}) - z({COMMAND_TEX})",
-          "How many typical steps his pitches are ahead of his aim.")),
-        (f"**Pitch mix flag.** His most-thrown pitch is not his best Stuff+ pitch (a pitch type needs "
-         f"{MIN_SWINGS_FOR_BEST}+ swings to count as \"best\"): a fix that needs only a change in usage.",
-         (rf"\text{{Flag}} = \left[\ \text{{most-thrown}} \neq \underset{{j}}{{\arg\max}}\ {tx(STUFF_LABEL)}_j\ \right]",
-          "True when the pitch he throws most isn't the one that grades best.")),
+        ("Both grades are turned into typical steps from average, then subtracted.",
+         rf"\text{{Upside}} = z({tx(STUFF_LABEL)}) - z({COMMAND_TEX})",
+         "Example: Stuff+ 120 (+2 steps) and Location+ 90 (-1 step) gives Upside +3."),
+        f"Pitch mix flag: his most-thrown pitch isn't his best Stuff+ pitch (a pitch needs {MIN_SWINGS_FOR_BEST}+ "
+        "swings to count as \"best\"), so he might gain just by throwing his best pitch more.",
     ],
-    numbers=[
-        (f"{MIN_SWINGS_FOR_BEST} swings", "a pitch type needs this many swings to be called his best, so a rarely "
-         "thrown pitch can't win by luck"),
-        (f"{UPSIDE_TARGET_INDEX:+.1f}", "the cutoff for the \"upside target\" group used in the team view"),
-    ],
-    drives=drivers_text("UpsideIndex", "By construction: it is the gap between the two grades."),
-    limit="It only compares two grades; it can't tell whether a pitcher's aim will actually improve with coaching.",
 )
 
 # ── Volatility (analysis/volatility_discount.py) ───────────────────────────────
@@ -517,114 +288,49 @@ metric_box(
     f"**{VOLATILITY_LABEL}**: game-to-game consistency",
     what=("Volatility measures how consistent a pitcher is from one game to the next, using how much his throwing "
           "speed and the spot where he lets go of the ball change. Higher means less consistent, which is riskier."),
-    why=("It is the risk the thesis is about: big-market teams pay for consistency, so if inconsistency scares teams "
-         f"more than it hurts results, inconsistent pitchers are underpriced. It is also an input to the "
-         f"{PROJ_WAR_LABEL} innings prediction."),
-    read=("Shown as a percentile within his role (starters vs. starters, relievers vs. relievers): 50 = typical; 90 = "
-          "more game-to-game change than 90% of qualified pitchers in his role (riskier, blue); 10 = very steady (red)."),
+    read="A percentile within his role: 50 is typical, 90 is more up-and-down than 90% of pitchers in his role, 10 is very steady.",
     steps=[
-        (f"**Pick the unit.** Starters: starts of {MIN_PITCHES_PER_START}+ pitches (he needs {MIN_STARTS}+). Relievers: "
-         f"appearances of {MIN_PITCHES_PER_RELIEF}+ pitches (he needs {MIN_RELIEF_APPEARANCES}+). A pitcher with "
-         f"neither but {MIN_PITCHES_TO_DISPLAY}+ pitches is scored from whichever kind of outing he has more of.",
-         (rf"\text{{starter: }} {MIN_STARTS}+ \text{{ starts of }} {MIN_PITCHES_PER_START}+ \text{{ pitches}} \qquad "
-          rf"\text{{reliever: }} {MIN_RELIEF_APPEARANCES}+ \text{{ games of }} {MIN_PITCHES_PER_RELIEF}+ \text{{ pitches}}",
-          "Only outings long enough to average reliably count.")),
-        ("**Average each outing**: his speed and his release point (side and height).",
-         (r"v_o = \text{average speed}, \qquad (x_o, z_o) = \text{average release point}",
-          "One speed and one release point per game.")),
-        ("**Measure the spread** of those outing averages over the season.",
-         (r"\text{speed volatility} = \text{SD}(v_o), \qquad \text{release volatility} = \sqrt{\text{SD}(x_o)^2 + \text{SD}(z_o)^2}",
-          "How far a typical game sits from his own season average.")),
-        ("**Score**, compared only with qualified pitchers in his role.",
-         (r"\text{score} = z(\text{speed volatility}) + z(\text{release volatility})",
-          "Both kinds of change add up; 0 = an average amount for his role.")),
-        ("**Small samples**: pulled toward the average score (n = his outings).",
-         (r"\text{score}_{\text{reg}} = " + REGRESSED_TEX.format(obs=r"\text{score}", mean=r"\overline{\text{score}}"),
-          "A pitcher with few outings leans toward an average amount of change.")),
-        ("**Percentile**: the share of qualified pitchers in his role with a score at or below his.",
-         (tx(VOLATILITY_LABEL) + r" = 100 \times \frac{\#\{\text{pitchers at or below him}\}}{\#\{\text{qualified, his role}\}}",
-          "Higher percentile = more volatile.")),
+        f"Pick his outings: starters use starts of {MIN_PITCHES_PER_START}+ pitches (at least {MIN_STARTS}); "
+        f"relievers use games of {MIN_PITCHES_PER_RELIEF}+ pitches (at least {MIN_RELIEF_APPEARANCES}).",
+        "Average his speed and release point in each outing.",
+        "Measure how much those averages move around over the season, and compare with other pitchers in his role "
+        "(starters with starters, relievers with relievers).",
+        "With only a few outings the score is pulled toward average, then shown as a percentile.",
     ],
-    numbers=[
-        (f"{MIN_PITCHES_PER_START} pitches, {MIN_STARTS} starts", "a start counts if it lasted this long, and a starter needs this many"),
-        (f"{MIN_PITCHES_PER_RELIEF} pitches, {MIN_RELIEF_APPEARANCES} games", "the same for relievers, whose outings are shorter"),
-        (f"k = {k_of.get('VolatilityScore[starter]', float('nan')):.1f} (starters), "
-         f"{k_of.get('VolatilityScore[reliever]', float('nan')):.1f} (relievers)",
-         "about this many outings before his own score counts as much as the average"),
-    ],
-    drives=drivers_text("VolatilityScore", "By construction: the score adds these two spreads."),
-    limit="It measures change in speed and release point, not why: a planned change, fatigue or an injury all look the same.",
 )
 
 # ── Injury risk (analysis/injury_history.py + risk_adjusted_value.injury_risk_score) ──
 first_season = SEASON - INJURY_LOOKBACK_SEASONS
-arm = ", ".join(sorted(ARM_BODY_PARTS))
 metric_box(
     "**Injury risk**: time missed with injuries",
     what=(f"Injury risk measures how much time a pitcher has missed because of injuries from {first_season} to "
-          f"{SEASON}, counting arm injuries ({arm}) extra. 0 means no missed time; 1 means a lot."),
-    why=(f"Time on the injured list (IL) is the most direct threat to a pitcher's value. The score is one of the "
-         f"inputs to the {PROJ_WAR_LABEL} innings prediction."),
-    read=(f"0 = no IL time. 0.5 = either about a full season missed ({INJURY_DAYS_FOR_MAX_RISK}+ days) or "
-          f"{INJURY_ARM_STINTS_FOR_MAX_RISK}+ arm stints. 1 = both. A pitcher whose IL history wasn't pulled gets 0."),
+          f"{SEASON}, counting arm injuries ({', '.join(sorted(ARM_BODY_PARTS))}) extra."),
+    read=(f"0 = no time on the injured list. 0.5 = about a full season missed ({INJURY_DAYS_FOR_MAX_RISK}+ days) or "
+          f"{INJURY_ARM_STINTS_FOR_MAX_RISK}+ arm injuries. 1 = both."),
     steps=[
-        (f"**Pull every injured-list stint** from the MLB Stats API for {SEASON} and the {INJURY_LOOKBACK_SEASONS} "
-         "seasons before it.",
-         (r"\text{stints} = \text{IL placements} \to \text{activations}",
-          "Each stint runs from the day he was placed on the IL to the day he came back.")),
-        ("**Count** regular-season days missed (D) and arm-injury stints (A).",
-         (r"D = \text{IL days}, \qquad A = \text{arm IL stints}",
-          "Days measure how long; arm stints measure the kind of injury that matters most for a pitcher.")),
-        ("**Score**: half from days, half from arm stints, each capped at 1.",
-         (rf"\text{{Risk}} = 0.5 \cdot \min\left(\frac{{D}}{{{INJURY_DAYS_FOR_MAX_RISK}}},\ 1\right) + "
-          rf"0.5 \cdot \min\left(\frac{{A}}{{{INJURY_ARM_STINTS_FOR_MAX_RISK}}},\ 1\right)",
-          "Each half grows with missed time or arm injuries and stops growing at its maximum.")),
+        "Every injured-list stint comes from MLB's official transactions.",
+        ("Half the score comes from days missed, half from arm injuries, each capped at its maximum.",
+         rf"\text{{Risk}} = 0.5 \times \min\left(\frac{{\text{{days}}}}{{{INJURY_DAYS_FOR_MAX_RISK}}}, 1\right) + "
+         rf"0.5 \times \min\left(\frac{{\text{{arm stints}}}}{{{INJURY_ARM_STINTS_FOR_MAX_RISK}}}, 1\right)",
+         f"{INJURY_DAYS_FOR_MAX_RISK} days is about a full season; {INJURY_ARM_STINTS_FOR_MAX_RISK} arm stints means an "
+         "arm injury came back."),
     ],
-    numbers=[
-        (f"{INJURY_DAYS_FOR_MAX_RISK} days", "the \"maximum\" for days: about a full regular season missed (an assumption, not fitted)"),
-        (f"{INJURY_ARM_STINTS_FOR_MAX_RISK} arm stints", "the \"maximum\" for arm injuries: the same kind of injury came back "
-         "(an assumption, not fitted)"),
-        ("0.5 and 0.5", "days and arm injuries count equally"),
-    ],
-    drives=drivers_text("InjuryRisk", "By construction: the score is built from these two counts."),
-    limit="It counts past injuries only; it can't see workload, mechanics or medical records.",
 )
 
 # ── Small-sample adjustment (analysis/stabilization.py) ────────────────────────
-reliable_at = 1000
 metric_box(
     "**Small-sample adjustment**: how much to trust a few pitches",
     what=("When we have only seen a pitcher throw a few pitches, his numbers could be luck. So we blend them with the "
           "league average, and the more pitches we see, the more we trust his own numbers."),
-    why=("Without it, a reliever with a lucky 80 pitches would look like the best pitcher in baseball, and the thesis "
-         "would chase noise. It is applied to every grade on the dashboard."),
-    read=(f"Reliability = n / (n + k): 0.5 when n = k. Example: Location+'s k is about {k_location:.0f}, so after "
-          f"{k_location:.0f} pitches his own Location+ counts half, and after {reliable_at:,} pitches "
-          f"{reliable_at / (reliable_at + k_location):.0%}. Stuff+'s k is about {k_stuff:.0f}, so it is trusted almost "
-          "at once. A \"small\" tag on the dashboard means reliability under 0.5."),
+    read=(f"A \"small\" tag or faded color means the grade is still less than half his own number. Stuff+ is trusted "
+          f"after about {k_stuff:.0f} pitches; Location+ needs about {k_location:.0f}."),
     steps=[
-        (f"**Split-half check.** For each stat and each sample size n (n = {', '.join(map(str, PITCH_GRID))} pitches; "
-         f"{', '.join(map(str, PA_GRID))} batters for walk rate; {', '.join(map(str, APPEARANCE_GRID))} games for "
-         f"volatility), every qualified pitcher with at least 2n gets two random, separate halves of n. The stat is "
-         f"computed on both halves and the halves are correlated across pitchers, averaged over {N_REPEATS} draws.",
-         (r"r(n) = \text{correlation}\left(\text{half A},\ \text{half B}\right)",
-          "If the two halves agree, the stat measures something real at that sample size.")),
-        ("**Find k**, the sample size where the stat is 50% reliable, by fitting the curve below to those r values.",
-         (r"r(n) = \frac{n}{n + k}",
-          "At n = k the curve is exactly 0.5: half signal, half noise.")),
-        ("**Adjust.** Blend his value with the league average by sample size.",
-         (r"\text{adjusted} = " + REGRESSED_TEX.format(obs=r"\text{his value}", mean=r"\text{league average}"),
-          "A big sample keeps its own number; a small one leans toward the average.")),
+        "For each stat, we split pitchers' pitches into two random halves and check whether the halves agree. That "
+        "tells us how many pitches (k) the stat needs before it is half real, half luck.",
+        (r"His number is then blended with the league average:",
+         r"\text{adjusted} = \frac{n \times \text{his value} + k \times \text{league average}}{n + k}",
+         "n = his pitches. Many pitches: mostly his own number. Few pitches: mostly the average."),
     ],
-    numbers=[
-        (f"Stuff+ k = {k_stuff:.0f}", "after just a few pitches his own number counts as much as the league average"),
-        (f"Location+ k = {k_location:.0f}", f"it takes about {k_location:.0f} pitches before his aim counts as much as "
-         "the average"),
-        (f"BB% k = {k_of.get('BBPct', float('nan')):.0f}", "batters faced before his walk rate counts half"),
-        (f"{N_REPEATS} draws", "random half-splits averaged at each sample size"),
-    ],
-    drives="Not a model of pitcher traits: it depends only on sample size and on how noisy each stat is.",
-    limit=f"k is measured on {DOLLARS_PER_WAR_YEAR} only and reused for every season.",
 )
 if stabilization is not None:
     with st.expander("k for every stat (Small-sample adjustment)"):
@@ -638,304 +344,101 @@ if stabilization is not None:
         )
 
 # ── FIP-WAR (analysis/fip_war.py) ──────────────────────────────────────────────
-top_war = qualified["ActualWAR"].quantile(0.9) if qualified is not None and qualified["ActualWAR"].notna().any() else float("nan")
 metric_box(
     f"**{ACTUAL_WAR_LABEL}**: actual value, in wins",
     what=("WAR (wins above replacement) estimates how many extra games a team won because of this pitcher, compared "
           "with an easily available backup pitcher. This version (FIP-WAR) uses only what the pitcher controls "
           "himself: strikeouts, walks, hit batters and home runs."),
-    why=("It is the yardstick: the WAR projection is fitted to it and tested against it, and surplus value turns it "
-         "into dollars. Hits on balls in play are left out because they depend a lot on the fielders and luck."),
-    read=(f"0 = what an easily available backup would give; higher is better. The league's pitchers add up to "
-          f"{TOTAL_PITCHER_WAR} WAR a season. In {SEASON}, the top 10% of qualified pitchers had {top_war:.1f}+ FIP-WAR."),
+    read=f"0 = what a backup would give; higher is better. All pitchers together add up to {TOTAL_PITCHER_WAR} WAR a season.",
     steps=[
-        ("**FIP** (fielding independent pitching): runs allowed estimated only from strikeouts (K), walks (BB), hit "
-         "batters (HBP) and home runs (HR) per inning pitched (IP). \"lg\" = the whole league that season.",
-         (r"\text{FIP} = \frac{13\,\text{HR} + 3\,(\text{BB} + \text{HBP}) - 2\,\text{K}}{\text{IP}} + c",
-          "Home runs hurt most, walks and hit batters some, strikeouts help; c makes the league's FIP equal its ERA "
-          "(earned runs per 9 innings).")),
-        ("**Runs-allowed scale.** lgRA9 = league runs allowed (earned or not) per 9 innings.",
-         (r"\text{FIPR9} = \text{FIP} + (\text{lgRA9} - \text{lgERA})",
-          "FIP moved onto the scale of all runs allowed.")),
-        ("**Runs per win** for this pitcher (dRPW). G = games pitched, so IP/G = innings per game.",
-         (r"\text{dRPW} = 1.5 \left( \frac{(18 - \text{IP}/G)\,\text{lgRA9} + (\text{IP}/G)\,\text{FIPR9}}{18} + 2 \right)",
-          "How many runs it takes to add one win (about 9 to 10), a little lower when he keeps scoring down.")),
-        ("**Wins above average per 9 innings**, and the replacement bar (GS/G = share of his games he started).",
-         (r"\text{WPGAA} = \frac{\text{lgRA9} - \text{FIPR9}}{\text{dRPW}}, \qquad "
-          r"\text{repl} = 0.03\,(1 - \text{GS}/G) + 0.12\,(\text{GS}/G)",
-          "Runs saved compared with average, turned into wins; a backup starter is worse than a backup reliever, so "
-          "starters get a higher bar to clear.")),
-        (f"**WAR**, scaled so every pitcher's WAR adds up to {TOTAL_PITCHER_WAR} for the season.",
-         (r"\text{WAR} = (\text{WPGAA} + \text{repl}) \cdot \frac{\text{IP}}{9} + c_{\text{IP}} \cdot \text{IP}",
-          "Wins per 9 innings times his innings, plus one small league-wide amount per inning.")),
+        ("Estimate his runs allowed from only what he controls (FIP), per inning pitched (IP).",
+         r"\text{FIP} = \frac{13\,\text{HR} + 3\,(\text{BB} + \text{HBP}) - 2\,\text{K}}{\text{IP}} + \text{league constant}",
+         "Home runs (HR) hurt most, walks (BB) and hit batters (HBP) some, strikeouts (K) help."),
+        "Compare that with the league average and turn the runs he saved into wins (about 9 to 10 runs = 1 win).",
+        f"Add the backup level (higher for starters than relievers), multiply by his innings, and scale so all "
+        f"pitchers total {TOTAL_PITCHER_WAR}.",
     ],
-    numbers=[
-        ("13, 3, 2", "FIP's weights per inning: each home run adds 13, each walk or hit batter 3, and each strikeout "
-         "takes away 2 (home runs hurt most)"),
-        ("18, 2, 1.5", "FanGraphs' runs-per-win formula: 18 = the innings both teams pitch in a game; 2 and 1.5 are "
-         "constants that fit it to real wins"),
-        ("0.12 and 0.03", "replacement level, in wins per 9 innings, for starters and relievers"),
-        (f"{TOTAL_PITCHER_WAR}", "all pitchers' WAR in a season (FanGraphs: 1,000 WAR a season, 43% to pitchers)"),
-    ],
-    drives="Not a regression: it is computed directly from strikeouts, walks, hit batters, home runs and innings.",
-    limit=("No ballpark adjustment (hitter-friendly parks make pitchers look worse) and no bonus for relievers who pitch "
-           "in close games, so closers look less valuable than on FanGraphs."),
 )
 
 # ── Projected WAR (analysis/war_calibration.py) ────────────────────────────────
-meta = war_model or {}
-coefs = meta.get("coefficients", {})
-rate_name = meta.get("chosen_rate_model", "rate model")
-rate_features = meta.get("rate_features", [])
-pt_features = meta.get("pt_features", [])
-carries_risk = meta.get("risk_in_rate_model") or meta.get("risk_in_playing_time_model")
-s_v, s_i = (0.0, 0.0) if carries_risk else (VOLATILITY_SHRINKAGE, INJURY_SHRINKAGE)
+coefs = (war_model or {}).get("coefficients", {})
+rate = coefs.get((war_model or {}).get("chosen_rate_model", ""), {})
 
 
-def rate_meaning(term: str, c: float) -> str:
-    """What one rate-model coefficient means, in words."""
-    more = "lowers" if c < 0 else "raises"
-    if term == "const":
-        return "the starting point (runs per 9 innings) before the adjustments below"
-    if term == "FIPR9_reg":
-        return f"about {c:.0%} of this year's result carries into next year; the rest drifts back toward average"
-    if term == "KminusBBPct":
-        return f"every 10 percentage points more strikeouts-minus-walks {more} expected runs per 9 by about {abs(c) * 0.1:.2f}"
-    if term in ("StuffPlus", "LocationPlus"):
-        name = STUFF_LABEL if term == "StuffPlus" else LOCATION_LABEL
-        if abs(c * 10) < 0.02:
-            return f"almost zero: {name} adds nothing once we know results and stuff"
-        return f"every 10 points of {name} {more} expected runs allowed per 9 innings by about {abs(c) * 10:.2f}"
-    if term == "Starter":
-        return f"a starter is expected to allow about {abs(c):.2f} {'more' if c > 0 else 'fewer'} runs per 9 than a reliever with the same numbers"
-    return f"each 1-unit increase changes expected runs per 9 by about {c:+.3f}"
-
-
-def innings_meaning(term: str, c: float, role: str) -> str:
-    """What one innings-model coefficient means, in words."""
-    example = 180 if role == "starter" else 60
-    if term == "const":
-        return "the starting amount of innings before the adjustments below"
-    if term == "IP":
-        return (f"about {c:.0%} of this year's innings carry over: a {role} who threw {example} innings is expected to "
-                f"throw about {example * c:.0f} plus the starting amount")
-    if term == "Age":
-        return f"each year older means about {abs(c):.1f} {'fewer' if c < 0 else 'more'} innings"
-    if term == "InjuryRiskScore":
-        return f"with this year's innings held fixed, injury risk 1 instead of 0 changes the forecast by about {c:+.1f} innings"
-    if term == "VolatilityScore_Reg":
-        return f"each point of volatility score changes the forecast by about {c:+.1f} innings"
-    return f"each 1-unit increase changes the forecast by about {c:+.2f} innings"
-
-
-TERM_NAMES = {
-    "FIPR9_reg": "this year's FIPR9", "KminusBBPct": "K-BB%", "StuffPlus": STUFF_LABEL, "LocationPlus": LOCATION_LABEL,
-    "Starter": "Starter", "IP": "this year's innings", "Age": "age", "InjuryRiskScore": "injury risk",
-    "VolatilityScore_Reg": "volatility score",
-}
-
-
-def coefficient_rows() -> list[tuple]:
-    """(number, meaning) rows for every fitted coefficient in war_model.json."""
-    def label(prefix, term, c):
-        return f"{prefix}: {c:.3g} (constant)" if term == "const" else f"{prefix}: {c:+.3g} x {TERM_NAMES.get(term, term)}"
-    rows = [(label("Runs per 9", t, coefs[rate_name][t]), rate_meaning(t, coefs[rate_name][t]))
-            for t in ["const", *rate_features] if rate_name in coefs]
-    for role in ("starter", "reliever"):
-        model = coefs.get(f"PT_{role}")
-        if model:
-            rows += [(label(f"Innings, {role}s", t, model[t]), innings_meaning(t, model[t], role))
-                     for t in ["const", *pt_features]]
-    return rows
-
-
-def projection_note_box():
-    """The out-of-sample / frozen-model note above the steps."""
+def projection_note():
+    """Which model made this season's projection (past seasons: out of sample)."""
     if OUT_OF_SAMPLE:
-        st.info(f"Out-of-sample projection: {MODEL_NOTE}. The numbers below are that single-pair model's, so the "
-                f"{SEASON} projection was made without knowing how {NEXT_SEASON} went; the dashboard shows Actual "
-                f"{NEXT_SEASON} WAR next to it.")
+        st.info(f"Out-of-sample projection: {MODEL_NOTE}. It was made without knowing how {NEXT_SEASON} went; the "
+                f"dashboard shows Actual {NEXT_SEASON} WAR next to it.")
     elif CALIBRATION_YEARS and SEASON > CALIBRATION_YEARS[-1]:
-        st.info(f"{MODEL_NOTE}. The {SEASON} season goes into exactly the same numbers to project {NEXT_SEASON}; "
-                f"{SEASON} is held out to test the model later.")
-    if war_model is None:
-        st.caption("Fitted coefficients aren't exported yet (dashboard/data/war_model.json), so β stands for each one.")
+        st.info(f"{MODEL_NOTE}. {SEASON} is held out to test the model later.")
 
 
-legacy_tex = (rf"\text{{ProjectedWAR}}_{{\text{{old}}}} = {LEAGUE_AVG_STARTER_WAR} + {WAR_PER_TALENT_Z} \cdot "
-              rf"\left[ z({tx(STUFF_LABEL)}) + z({COMMAND_TEX}) \right]")
-if WAR_MODEL == "calibrated":
-    war_steps = [
-        (f"**Rate model** ({rate_name}): how well he should pitch. A weighted regression (pitchers with more innings "
-         f"next season count more) of next season's FIPR9 on this season's FIPR9 (pulled toward the league by "
-         f"{FIPR9_REGRESSION_IP} innings), strikeout-minus-walk rate (K-BB%), Stuff+, Location+ and role (Starter = 1 "
-         f"if he started at least {STARTER_GS_SHARE:.0%} of his games). Fitted on "
-         f"{meta.get('final_fit', 'both season pairs')}, on pitchers with {MIN_IP_FOR_RATE_MODEL}+ innings next season.",
-         (rf"\text{{FIPR9}}_{{\text{{reg}}}} = \frac{{\text{{IP}} \cdot \text{{FIPR9}} + {FIPR9_REGRESSION_IP} "
-          rf"\cdot \text{{lgFIPR9}}}}{{\text{{IP}} + {FIPR9_REGRESSION_IP}}}",
-          f"This season's runs allowed per 9, blended with {FIPR9_REGRESSION_IP} innings of league average.")),
-        ("**Expected runs allowed per 9 innings next season**, from the fitted rate model.",
-         (r"\widehat{\text{FIPR9}}_{t+1} = " + linear_tex(coefs.get(rate_name), rate_features),
-          "Start from the constant and add each input times its weight; negative weights mean fewer runs allowed.")),
-        ("**Innings model**: how much he should pitch. A regression of next season's innings, fitted separately for "
-         "starters and relievers on every pitcher, including those who threw 0 innings the next year (that is how "
-         "injury and losing a job show up). Age = age on July 1 of next season; never below 0.",
-         (r"\text{starters: } \widehat{\text{IP}}_{t+1} = \max\left(0,\ " + linear_tex(coefs.get("PT_starter"), pt_features) + r"\right)",
-          "Starters' expected innings next season."),
-         (r"\text{relievers: } \widehat{\text{IP}}_{t+1} = \max\left(0,\ " + linear_tex(coefs.get("PT_reliever"), pt_features) + r"\right)",
-          "Relievers' expected innings next season.")),
-        (f"**Plug both into the FIP-WAR formula** ({ACTUAL_WAR_LABEL} box), with {SEASON}'s league values and his own "
-         f"{SEASON} share of games started and innings per game.",
-         (r"\text{ProjectedWAR} = \left(\text{WPGAA}(\widehat{\text{FIPR9}}) + \text{repl}\right) \cdot "
-          r"\frac{\widehat{\text{IP}}}{9} + c_{\text{IP}} \cdot \widehat{\text{IP}}",
-          "How well he should pitch, times how much he should pitch.")),
-        (f"**Tested on a season it never saw.** Fitted on {TRAIN_PAIR} and tested on {TEST_PAIR}, it predicted "
-         f"next-season WAR much better than the old formula and a little better than \"same as last year\". "
-         f"Because injury risk and volatility are already inputs, no extra risk discount is applied on top "
-         f"(s_v = {s_v}, s_i = {s_i}).",
-         (r"\text{Keep} = \left(1 - s_v \cdot \frac{\text{pct}}{100}\right)\left(1 - s_i \cdot \text{Risk}\right) = 1",
-          f"{PROJ_WAR_LABEL} is the projection above, unchanged.")),
-    ]
-else:
-    war_steps = [
-        (f"**Talent** (uncalibrated placeholder, config.WAR_MODEL = \"legacy\"): a {LEAGUE_AVG_STARTER_WAR}-WAR average "
-         f"starter plus {WAR_PER_TALENT_Z} WAR per typical step of combined stuff and aim.",
-         (legacy_tex, "Rough anchors, not fitted to real results.")),
-        (f"**Risk.** pct = volatility percentile; Risk = injury risk. s_v = {VOLATILITY_SHRINKAGE}, s_i = {INJURY_SHRINKAGE}.",
-         (r"\text{Keep} = \left(1 - s_v \cdot \frac{\text{pct}}{100}\right)\left(1 - s_i \cdot \text{Risk}\right)",
-          "Riskier pitchers keep less of their value above replacement.")),
-    ]
+rate_text = (f" About {rate['FIPR9_reg']:.0%} of this season's result carries into next season; every 10 points of "
+             f"Stuff+ changes expected runs allowed per 9 innings by about {rate['StuffPlus'] * 10:+.2f}, while "
+             f"Location+ changes it by only {rate['LocationPlus'] * 10:+.2f}."
+             if {"FIPR9_reg", "StuffPlus", "LocationPlus"} <= set(rate) else "")
 metric_box(
     f"**{PROJ_WAR_LABEL}**: expected value next season",
     what=("Projected WAR is our estimate of how many extra wins a pitcher will give his team next season: how well he "
           "should pitch, times how much he should pitch."),
-    why=("It is the value side of the thesis: it is where Stuff+ either earns its place or doesn't (it does, while "
-         "Location+ adds little), and it is the number surplus value turns into dollars."),
-    read=("Same scale as FIP-WAR: 0 = what an easily available backup would give; higher is better. It is cautious: it "
-          "pulls everyone toward average, so the very best pitchers are projected a bit lower than they tend to produce."),
-    steps=war_steps,
-    numbers=coefficient_rows() if WAR_MODEL == "calibrated" else [
-        (f"{LEAGUE_AVG_STARTER_WAR}", "WAR of an average qualified starter (placeholder)"),
-        (f"{WAR_PER_TALENT_Z}", "WAR per typical step of stuff + aim (placeholder)")],
-    drives=drivers_text("ProjectedWAR"),
-    limit=(f"It is fitted on only {len(CALIBRATION_PAIRS) or 'two'} season-to-season pairs, it holds WAR flat across "
-           "future years (no aging curve), and it can't foresee injuries beyond what past ones suggest."),
-    before_steps=projection_note_box,
+    read="Same scale as FIP-WAR: 0 = backup level; higher is better.",
+    note=projection_note,
+    steps=[
+        "**How well he should pitch:** next season's runs allowed per 9 innings, predicted from this season's results, "
+        "his strikeout-minus-walk rate, Stuff+, Location+ and whether he starts." + rate_text,
+        "**How much he should pitch:** next season's innings, predicted from this season's innings, his age, injury "
+        "risk and volatility (starters and relievers separately).",
+        "Both go into the FIP-WAR formula above.",
+        f"The model learned from what really happened to every pitcher from one season to the next, and was tested on "
+        f"a season it never saw ({TEST_PAIR}): it beat the old formula and \"same as last year\".",
+    ] if WAR_MODEL == "calibrated" else [
+        f"Uncalibrated placeholder (config.WAR_MODEL = \"legacy\"): a {LEAGUE_AVG_STARTER_WAR}-WAR average starter plus "
+        f"{WAR_PER_TALENT_Z} WAR per typical step of Stuff+ and Location+, pulled down for volatility and injury risk.",
+    ],
 )
 
 # ── Surplus (analysis/risk_adjusted_value.py) ──────────────────────────────────
-minimums = ", ".join(f"\\${v / 1e3:,.0f}K in {y}" for y, v in sorted(LEAGUE_MIN_SALARY_BY_YEAR.items()))
-growth, discount = DOLLARS_PER_WAR_GROWTH, DISCOUNT_RATE
-positive_share = (f"{(report['MultiYearSurplus_M'] > 0).sum() / report['MultiYearSurplus_M'].notna().sum():.0%}"
-                  if report is not None and report["MultiYearSurplus_M"].notna().any() else "n/a")
 
 
 def no_contract_note():
     """Shown when the season has no salaries file."""
     if not HAS_CONTRACTS:
         st.info(f"No {SEASON} contract data: there is no salaries file for {SEASON}, so this season shows no salary, "
-                "surplus or contract values (they are never filled in with league-minimum defaults).")
+                "surplus or contract values.")
 
 
+arb = " / ".join(f"{p:.0%}" for p in ARB_PCT_OF_MARKET)
 metric_box(
     f"**{SURPLUS_LABEL}**: the bottom line",
-    what=("Surplus is the pitcher's value in dollars minus what he is paid. Teams control young players' salaries for up "
-          "to six years before they can sign anywhere, so we add this up over those years. Positive means he is worth "
-          "more than he costs."),
-    why=("It is the bottom line for a low-payroll team: cheap production with years of control left. The Team Value "
-         "Board is ranked by it."),
-    read=(f"$0 = worth exactly what he costs; positive = underpaid. It starts in {NEXT_SEASON}, the first season a team "
-          f"trading for him now would get. A free agent after {SEASON} has no controlled years, so he gets no number "
-          f"(not a zero). In {SEASON}, {positive_share} of valued pitchers had positive surplus."),
+    what=("Surplus is the pitcher's value in dollars minus what he is paid. Teams control young players' salaries for "
+          "up to six years before they can sign anywhere, so we add this up over those years. Positive means he is "
+          "worth more than he costs."),
+    read=(f"$0 = worth exactly what he costs; positive = underpaid. A free agent after {SEASON} has no controlled "
+          "years left, so he has no surplus number."),
+    note=no_contract_note,
     steps=[
-        (f"**Value of a win**: ${DOLLARS_PER_WAR / 1e6:.1f}M in {DOLLARS_PER_WAR_YEAR}, rising {growth:.0%} a year "
-         f"(${DOLLARS_PER_WAR * (1 + growth) ** GROWTH_YEARS_NEXT / 1e6:.2f}M in {NEXT_SEASON}, year t = 0).",
-         (rf"\$/\text{{WAR}}_t = {tex_num(DOLLARS_PER_WAR)} \times (1 + {growth})^{{t+{GROWTH_YEARS_NEXT}}}",
-          "A win costs a little more each year.")),
-        (f"**Each control year's value** = projected WAR ({PROJ_WAR_LABEL}, held flat) times that year's price.",
-         (r"\text{Value}_t = \text{WAR} \times \$/\text{WAR}_t",
-          "What his wins would cost on the open market that year.")),
-        (f"**Salary**: his guaranteed salary where listed; the league minimum before arbitration ({minimums}; later "
-         f"years use the last one); in arbitration, a share of his value (table below), never below last year's "
-         f"salary; after the listed years, his average annual value (AAV).",
-         (r"\text{Salary}_t = \max\left(\text{Salary}_{t-1},\ \text{ARB}_a \times \text{Value}_t\right) \quad \text{(arbitration)}",
-          "In arbitration he earns a growing share of his market value, but never a pay cut.")),
-        (f"**Add it up** over the remaining control years (at most {MAX_CONTROL_YEARS}), discounting each later year by "
-         f"{discount:.0%}.",
-         (tx(SURPLUS_LABEL) + rf" = \sum_{{t=0}}^{{T-1}} \frac{{\text{{Value}}_t - \text{{Salary}}_t}}{{(1 + {discount})^t}}",
-          "Each year's value minus pay, with later years counting a little less.")),
+        f"One win is worth ${DOLLARS_PER_WAR / 1e6:.1f}M in {DOLLARS_PER_WAR_YEAR}, rising {DOLLARS_PER_WAR_GROWTH:.0%} a year.",
+        f"For each year his team controls him from {NEXT_SEASON} on: projected WAR × the price of a win, minus his "
+        f"salary (the league minimum early in his career, then {arb} of his value in arbitration years).",
+        (f"Add up those years (at most {MAX_CONTROL_YEARS}), counting later years a little less.",
+         rf"\text{{surplus}} = \sum_t \frac{{\text{{value}}_t - \text{{salary}}_t}}{{(1 + {DISCOUNT_RATE})^t}}",
+         f"Each later year is discounted {DISCOUNT_RATE:.0%}, because a win later is worth less than a win now."),
     ],
-    numbers=[
-        (f"${DOLLARS_PER_WAR / 1e6:.1f}M per win", f"what one extra win costs on the free-agent market in {DOLLARS_PER_WAR_YEAR}"),
-        (f"{growth:.0%} a year", "how fast that price rises"),
-        (" / ".join(f"{p:.0%}" for p in ARB_PCT_OF_MARKET),
-         "salary as a share of his value in arbitration years 1 to 4 (year 4 only for \"Super Two\" players, who reach "
-         "arbitration early)"),
-        (f"{discount:.0%} discount", "a win later is worth less than a win now, so each later year is divided by "
-         f"{1 + discount:.2f} once more"),
-        (f"{MAX_CONTROL_YEARS}-year cap", "at most this many future seasons are counted, so one long contract can't dominate"),
-        (f"${DOLLARS_PER_WAR * (1 + growth) ** GROWTH_YEARS_NOW / 1e6:.2f}M",
-         f"the {SEASON} price used by the look-back column ({SURPLUS_ACTUAL_LABEL}: his real {SEASON} FIP-WAR times this, "
-         f"minus his {SEASON} salary)"),
-    ],
-    drives=drivers_text("Surplus"),
-    limit="WAR is held flat across years (no aging curve), and the dollar assumptions are set by hand, not fitted.",
-    before_steps=no_contract_note,
 )
 
 # ── Team staff averages (analysis/export_report_data.build_team_staff) ─────────
 metric_box(
     "**Team averages**: each pitching staff as a whole",
     what="The average for a team's whole pitching staff, where pitchers who threw more pitches count more.",
-    why=("It checks whether the grades matter for a team: do staffs with better Stuff+ actually allow fewer runs and "
-         "win more? It is on the League page's Teams tab."),
-    read=("Same scales as the pitcher grades (team Stuff+ 100 = an average pitch quality), with each team's rank among "
-          "all 30 (1 = highest, except volatility and injury risk, where 1 = lowest)."),
+    read="Same scales as the pitcher grades, plus each team's rank among all 30 (on the League page's Teams tab).",
     steps=[
-        ("**Weight each pitcher** by the pitches he threw FOR THAT TEAM (a traded pitcher counts only for his time there).",
-         (r"w_i = \text{pitches pitcher } i \text{ threw for this team}",
-          "Pitchers who pitched more for the team count more.")),
-        ("**Average** every grade with those weights; totals are split instead: FIP-WAR by his innings for each team, "
-         "projected WAR and surplus by his share of pitches.",
-         (r"\text{team Stuff+} = \frac{\sum_i w_i \cdot \text{Stuff+}_i}{\sum_i w_i}",
-          "The same for every average: Location+, Upside Index, volatility, injury risk.")),
-        ("**Compare** with each team's runs allowed, run differential (runs scored minus allowed) and wins, from the "
-         "MLB Stats API.",
-         (r"\text{runs allowed} \sim \text{team Stuff+} + \text{team Location+}",
-          "Does a better staff grade go with fewer runs allowed?")),
+        "Each pitcher counts by the pitches he threw for that team (a traded pitcher counts only for his time there).",
+        "Totals like FIP-WAR are split by his innings for each team.",
+        "Each staff is compared with the team's runs allowed, run differential and wins.",
     ],
-    numbers=[
-        (f"{UPSIDE_TARGET_INDEX:+.1f}", "Upside Index at or above which a pitcher counts toward \"upside-target pitch %\""),
-        (f"{MIN_PITCHES_DASHBOARD} pitches", "pitchers under this have no grades, so they add pitches but no values"),
-    ],
-    drives="Not a regression of traits: see the Teams tab's charts for how each staff average lines up with runs allowed.",
-    limit="Thirty teams a season is a small sample, and wins also depend on hitting and fielding.",
 )
 
-# ── Older aim measure, kept for comparison ─────────────────────────────────────
-with st.expander("**Legacy command proxy**: the older aim measure"):
-    in_use = ("It is kept only for comparison: the dashboard uses Location+." if COMMAND_METRIC == "location_plus"
-              else "It is the aim input right now (config.COMMAND_METRIC).")
-    st.markdown(
-        f"""
-The aim measure used before Location+. {in_use} It scores working the edges of the strike zone, staying out of the
-middle, and not walking batters.
-"""
-    )
-    edge_lo, edge_hi = EDGE_BAND
-    how_its_calculated([
-        ("**Zone distance.** d = 0 at the middle of the zone, 1 at its edge, more than 1 outside it.",
-         (r"d = \max\left(\frac{|\text{plate}_x|}{w},\ \frac{|\text{plate}_z - m|}{h}\right)",
-          "The larger of the sideways and up-down distances from the middle, in zone half-widths.")),
-        ("**Three rates.** Edge% = share of his pitches on the edge band; Meatball% = share near the middle; BB% = "
-         "walks per batter faced.",
-         (rf"\text{{Edge\%}}: {edge_lo} \le d \le {edge_hi}, \qquad \text{{Meatball\%}}: d < {MEATBALL_MAX}, \qquad "
-          r"\text{BB\%} = \frac{\text{walks}}{\text{batters}}",
-          "Edges are good, the middle is bad, walks are bad.")),
-        ("**Combine.** Each rate is first pulled toward the qualified average with its own k.",
-         (r"\text{CommandProxy} = z(\text{Edge\%}) - z(\text{Meatball\%}) - z(\text{BB\%})",
-          "More edges, fewer middles, fewer walks = better.")),
-    ])
 
 st.header("Pitch abbreviations")
 st.markdown("Charts label pitches with these standard abbreviations. Hover a pitch on any chart to see its full name.")
@@ -1014,11 +517,6 @@ GLOSSARY = [
     ("Percentile", "the share of pitchers at or below a value (90th = better than 90%)"),
     ("Qualified pitcher", f"one with {MIN_PITCHES_FOR_INCLUSION}+ pitches in the season; league averages come from them"),
     ("Regression model", "a formula fitted to past data that finds how much each factor is linked to the outcome"),
-    ("Logistic regression", "a regression for yes/no outcomes (miss or not); each trait gets a weight"),
-    ("Gradient-boosted trees", "many small yes/no decision trees, each fixing the last one's mistakes"),
-    ("Out of fold", "each pitcher is graded by a model that never saw his pitches"),
-    ("Standardized coefficient", "how many typical steps a metric moves when one trait moves one typical step"),
-    ("R²", "the share of the differences between pitchers a model explains (0 = none, 1 = all)"),
     ("Small-sample adjustment (k)", "blending a pitcher's number with the league average; k = the sample at which "
      "his own number counts half"),
 ]
