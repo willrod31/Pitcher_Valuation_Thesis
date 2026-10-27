@@ -1,23 +1,25 @@
 """
-IL history from the MLB Stats API transactions feed, so injury data doesn't
-have to be collected by hand anymore.
+Injury history: every injured-list stint for each pitcher, from the MLB Stats API, plus a per-pitcher summary.
 
-Pulls every transaction for a pitcher, turns the IL moves into one row per
-stint (data/injury_stints.csv), then one row per pitcher
-(data/injury_summary.csv) for volatility_discount.py.
+Injury risk measures how much time a pitcher has missed because of injuries over recent seasons,
+counting arm injuries (elbow, forearm, lat, shoulder) extra. 0 means no missed time; 1 means a lot. This file
+collects the injured-list (IL) history; the 0-to-1 score itself is risk_adjusted_value.injury_risk_score.
 
-Queries by playerId instead of teamId so time with other teams counts too.
+How it works:
+    1. Pull every transaction for each pitcher for config.SEASON and the config.INJURY_LOOKBACK_SEASONS seasons
+       before it, by player id (so time with other teams counts too).
+    2. Build one row per IL stint: it starts at "placed ... on the N-day injured list" (the retroactive date if
+       given); a 15- to 60-day transfer is the same stint; it ends at the next activation by an MLB team.
+       The feed sometimes skips an activation, so then the stint ends at his first MLB appearance afterwards,
+       and if there is none, at the last day of the regular season (OpenEnded = True).
+    3. Count regular-season days missed and label the body part from the injury text; elbow, forearm, lat and
+       shoulder count as arm injuries.
+    4. Summarize per pitcher: stints, total days missed, days last season, arm stints, any 60-day stint.
 
-Notes on how stints get built:
-- starts at "placed ... on the N-day injured list" (retro date if given)
-- a 15 -> 60 day transfer is the same stint, just updates ILType
-- ends at the next activation/reinstatement by an MLB team. Older ones are
-  just "activated RHP X." with no list named, those count too
-- the feed sometimes skips activations (Mlodzinski 2024, Ferguson 2022 both
-  pitched between two placements), so if there's no activation I use their
-  first MLB appearance after going on the IL
-- still nothing -> end at the last day of the regular season, OpenEnded=True
-- DaysMissed is regular season days only
+Inputs: the MLB Stats API (cached in data/raw/mlb_api/transactions/ and gamelogs/).
+Outputs: data/results/injury_stints.csv and injury_summary.csv (rows for the pitchers run are replaced).
+
+    python -m analysis.injury_history --team PIT   (or --pitcher "Paul Skenes")
 """
 import argparse
 import json
@@ -32,15 +34,14 @@ from analysis.data_acquisition import attach_pitcher_names, lookup_mlbam_id, tea
 from analysis.utils import GAMELOG_DIR, MLB_API_DIR, RESULTS_DIR, TRANSACTIONS_DIR
 
 API_BASE = "https://statsapi.mlb.com/api/v1"
-REQUEST_SLEEP_SECONDS = 0.5
-DUPLICATE_PLACEMENT_DAYS = 3
+REQUEST_SLEEP_SECONDS = 0.5      # pause after each API call, to be polite to the server
+DUPLICATE_PLACEMENT_DAYS = 3     # two placements this close together are the same stint posted twice
 SEASON_DATES_PATH = MLB_API_DIR / "mlb_season_dates.json"
 
 STINTS_PATH = RESULTS_DIR / "injury_stints.csv"
 SUMMARY_PATH = RESULTS_DIR / "injury_summary.csv"
 
-# MLB team ids (these don't change when a team renames/moves). Anything else
-# is a minor league team, which we skip.
+# MLB team ids (they don't change when a team renames or moves); anything else is a minor league team, skipped
 MLB_TEAM_IDS = frozenset({
     108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 133,
     134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 158,
@@ -52,7 +53,7 @@ RETRO_RE = re.compile(r"retroactive to ([A-Z][a-z]+ \d{1,2}, \d{4})")
 INJURY_TEXT_RE = re.compile(r"injured list(?: retroactive to [A-Za-z]+ \d{1,2}, \d{4})?\.\s*(.*)$", re.IGNORECASE)
 RETURN_RE = re.compile(r"\b(activated|reinstated)\b", re.IGNORECASE)
 
-# checked in order, first match wins (so UCL before elbow, lat before shoulder)
+# Checked in order, first match wins (so UCL before elbow, lat before shoulder)
 BODY_PART_KEYWORDS = [
     ("elbow", r"\bucl\b|tommy john|ulnar collateral|\belbow\b"),
     ("forearm", r"\bflexor\b|\bforearm\b|\bpronator\b"),
@@ -85,6 +86,7 @@ SUMMARY_COLUMNS = [
 
 
 def _get_json(url: str, params: dict) -> dict:
+    """The JSON reply to one MLB Stats API request (raises on an HTTP error)."""
     resp = requests.get(url, params=params, timeout=30)
     resp.raise_for_status()
     time.sleep(REQUEST_SLEEP_SECONDS)
@@ -92,11 +94,12 @@ def _get_json(url: str, params: dict) -> dict:
 
 
 def default_seasons() -> tuple[int, int]:
+    """(first, last) season pulled: config.INJURY_LOOKBACK_SEASONS before config.SEASON, through config.SEASON."""
     return SEASON - INJURY_LOOKBACK_SEASONS, SEASON
 
 
 def fetch_transactions(mlbam_id: int, start_season: int | None = None, end_season: int | None = None, force_refresh: bool = False) -> list[dict]:
-    """All transactions for one player, cached in data/."""
+    """Step 1: every transaction for one player in those seasons, cached in data/raw/mlb_api/transactions/."""
     default_start, default_end = default_seasons()
     start_season = start_season or default_start
     end_season = end_season or default_end
@@ -116,10 +119,10 @@ def fetch_transactions(mlbam_id: int, start_season: int | None = None, end_seaso
 
 
 def season_dates(season: int, force_refresh: bool = False) -> tuple[pd.Timestamp, pd.Timestamp]:
-    """Opening day and last regular season day.
+    """(opening day, last regular-season day) for a season, cached.
 
-    Not using regularSeasonStartDate for opening day since that's the Tokyo
-    series in 2025 (3/18), using the first day with a real slate of games.
+    Opening day is the first day with a full slate of games (5+), not the API's regularSeasonStartDate,
+    which in 2025 is the Tokyo series on March 18.
     """
     cache = json.loads(SEASON_DATES_PATH.read_text()) if SEASON_DATES_PATH.exists() else {}
     key = str(season)
@@ -141,7 +144,7 @@ def season_dates(season: int, force_refresh: bool = False) -> tuple[pd.Timestamp
 
 
 def fetch_appearance_dates(mlbam_id: int, season: int, force_refresh: bool = False) -> list[pd.Timestamp]:
-    """Dates they pitched in an MLB regular season game that year."""
+    """Dates he pitched in an MLB regular-season game that year, cached."""
     raw_path = GAMELOG_DIR / f"gamelog_{mlbam_id}_{season}.json"
     if raw_path.exists() and not force_refresh:
         dates = json.loads(raw_path.read_text())
@@ -156,7 +159,7 @@ def fetch_appearance_dates(mlbam_id: int, season: int, force_refresh: bool = Fal
 
 
 def first_appearance_after(mlbam_id: int, start: pd.Timestamp, before: pd.Timestamp) -> pd.Timestamp | None:
-    """First MLB appearance after going on the IL (if they pitched, they were off it)."""
+    """His first MLB appearance after `start` and before `before` (if he pitched, he was off the IL), or None."""
     for season in range(start.year, before.year + 1):
         for date in fetch_appearance_dates(mlbam_id, season):
             if start < date < before:
@@ -165,6 +168,7 @@ def first_appearance_after(mlbam_id: int, start: pd.Timestamp, before: pd.Timest
 
 
 def classify_body_part(injury: str) -> str:
+    """Step 3: the body part named in the injury text (BODY_PART_KEYWORDS), or "other"."""
     text = injury.lower()
     for part, pattern in BODY_PART_KEYWORDS:
         if re.search(pattern, text):
@@ -186,20 +190,20 @@ def _injury_text(description: str) -> str:
 
 
 def _is_return(txn: dict) -> bool:
-    """Activated/reinstated by an MLB team, or contract selected."""
+    """True if this transaction ends a stint: activated or reinstated by an MLB team, or contract selected."""
     desc = txn.get("description", "")
     if txn.get("typeCode") == "SE":
         return True
     if txn.get("typeCode") != "SC" or not RETURN_RE.search(desc):
         return False
-    # skip paternity/bereavement/restricted list, but plain "activated RHP X." counts
+    # skip paternity, bereavement and restricted lists, but a plain "activated RHP X." counts
     return "injured list" in desc.lower() or " list" not in desc.lower()
 
 
 def parse_il_stints(transactions: list[dict], pitcher_name: str | None = None, infer_missing_returns: bool = True) -> pd.DataFrame:
-    """One row per IL stint (split into one row per season if it crosses an offseason).
+    """Step 2: one row per IL stint (one row per season if it crosses an offseason).
 
-    infer_missing_returns=False skips the game log lookup.
+    infer_missing_returns=False skips the game-log lookup for stints with no activation listed.
     """
     txns = {t["id"]: t for t in transactions if "person" in t and t.get("date")}.values()
     txns = [t for t in txns if _is_mlb_club(t)]
@@ -259,7 +263,7 @@ def parse_il_stints(transactions: list[dict], pitcher_name: str | None = None, i
 
 
 def _split_by_season(stint: dict, stint_number: int, pitcher_name: str | None) -> list[dict]:
-    """Regular season days only, one row per season."""
+    """Step 3: one row per season the stint touches, counting regular-season days only."""
     start = stint["start"]
     end = stint["end"]
     first_season = start.year
@@ -294,7 +298,7 @@ def _split_by_season(stint: dict, stint_number: int, pitcher_name: str | None) -
 
 
 def summarize_injuries(stints: pd.DataFrame, pitchers: pd.DataFrame, last_season: int = SEASON) -> pd.DataFrame:
-    """One row per pitcher. Pitchers with no IL stints get 0s (not missing)."""
+    """Step 4: one row per pitcher; pitchers with no IL stints get 0s (not blanks)."""
     stints = stints.sort_values(["PitcherId", "StartDate"])
     grouped = stints.groupby("PitcherId")
     per_stint = stints.drop_duplicates("StintId")
@@ -316,7 +320,7 @@ def summarize_injuries(stints: pd.DataFrame, pitchers: pd.DataFrame, last_season
 
 
 def build_injury_history(pitchers: pd.DataFrame, start_season: int | None = None, end_season: int | None = None, force_refresh: bool = False) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Returns (stints, summary) for every pitcher in `pitchers`."""
+    """(stints, summary) for every pitcher in `pitchers` (steps 1-4)."""
     default_start, default_end = default_seasons()
     start_season = start_season or default_start
     end_season = end_season or default_end
@@ -332,7 +336,7 @@ def build_injury_history(pitchers: pd.DataFrame, start_season: int | None = None
 
 
 def _upsert_csv(rows: pd.DataFrame, path, pitcher_ids) -> pd.DataFrame:
-    """Same upsert as the Stuff+ exports, only replaces these pitchers' rows."""
+    """Write `rows` into `path`, replacing only these pitchers' earlier rows; returns the whole file."""
     if path.exists():
         existing = pd.read_csv(path)
         existing = existing[~existing["PitcherId"].isin(pitcher_ids)]
@@ -342,6 +346,7 @@ def _upsert_csv(rows: pd.DataFrame, path, pitcher_ids) -> pd.DataFrame:
 
 
 def save_injury_history(stints: pd.DataFrame, summary: pd.DataFrame):
+    """Save both tables, replacing these pitchers' earlier rows."""
     pitcher_ids = summary["PitcherId"].unique()
     all_stints = _upsert_csv(stints, STINTS_PATH, pitcher_ids)
     all_summary = _upsert_csv(summary, SUMMARY_PATH, pitcher_ids)
@@ -350,7 +355,7 @@ def save_injury_history(stints: pd.DataFrame, summary: pd.DataFrame):
 
 
 def resolve_pitchers(pitcher: str | None = None, team: str | None = None) -> pd.DataFrame:
-    """PitcherId/Pitcher for --pitcher or --team (same roster as Stuff+)."""
+    """PitcherId and Pitcher for --pitcher or --team (the same roster as Stuff+)."""
     if pitcher and team:
         raise ValueError("Pass --pitcher or --team, not both")
     if team:
@@ -363,6 +368,7 @@ def resolve_pitchers(pitcher: str | None = None, team: str | None = None) -> pd.
 
 
 def run(pitcher: str | None = None, team: str | None = None, start_season: int | None = None, end_season: int | None = None, force_refresh: bool = False):
+    """Pull, print and save the IL history for one pitcher or one team."""
     pitchers = resolve_pitchers(pitcher, team)
     print(f"Pulling IL transactions for {len(pitchers)} pitcher(s)...")
     stints, summary = build_injury_history(pitchers, start_season, end_season, force_refresh=force_refresh)

@@ -1,4 +1,16 @@
-# League page: every MLB pitcher in the selected season, ranked and plotted, starters and relievers separately
+"""
+League page: every MLB pitcher in the selected season, ranked and plotted, plus each team's staff vs. its results.
+
+How it works:
+    1. Read the season's pitcher_report_data.csv (one row per pitcher) and current_team.csv (his team in his last game).
+    2. Starters and Relievers tabs: leaderboards (sidebar filters for pitches and teams), then a Stuff+ vs. Location+
+       chart colored by Upside Index or surplus; clicking a dot opens that pitcher's report.
+    3. Teams tab: team_staff.csv (each staff's pitch-weighted averages and totals) next to team_records.csv (wins,
+       runs), with charts of staff grades against runs allowed, wins and payroll; it can pool every season.
+Every (?) tooltip text is in COLUMN_HELP and TEAM_HELP below.
+
+Inputs: dashboard/data/<season>/. Outputs: the League page. Run with: streamlit run dashboard/app.py
+"""
 import sys
 from pathlib import Path
 
@@ -23,9 +35,9 @@ DATA_DIR = data_dir(SEASON)
 REPORT_PATH = DATA_DIR / "pitcher_report_data.csv"       # one row per pitcher (analysis/export_report_data.py)
 CURRENT_TEAM_PATH = DATA_DIR / "current_team.csv"        # team of his last game (export_report_data.save_current_team)
 BASELINE_COLOR = "#8A8F98"
-DEFAULT_MIN_PITCHES = {"starter": 500, "reliever": 250}
+DEFAULT_MIN_PITCHES = {"starter": 500, "reliever": 250}   # sidebar sliders' starting minimum
 SIZE_CAP_PITCHES = {"starter": 2500, "reliever": 1000}   # dot size stops growing here
-N_LABELS = 10
+N_LABELS = 10                                            # top pitchers named on each chart
 TARGET_FILL = "rgba(216, 33, 41, 0.06)"                    # GOOD_COLOR, very light
 EST_FA = f"FA after {SEASON}"
 TWO_WAY_TEXT = "Two-way: not valued"
@@ -40,7 +52,7 @@ ACTUAL_NEXT = f"Actual {NEXT_SEASON} WAR"   # past seasons only: what happened t
 MODEL_NOTE = projection_note(SEASON)
 NO_CONTRACTS_TEXT = f"No {SEASON} contract data"
 
-# preset -> (column sorted on, label); every one sorts high to low
+# leaderboard -> (column sorted on, label); every one sorts high to low
 PRESETS = {
     "Upside targets": ("AsymmetricUpsideIndex_Reg", "Upside Index"),
     "Top Stuff+": ("StuffPlus_Final", "Stuff+"),
@@ -51,28 +63,28 @@ PRESETS = {
     "Most volatile": ("VolatilityPercentile_Reg", "Volatility percentile"),
 }
 COLUMN_HELP = {
-    "Rank": "Position in the selected leaderboard, after the filters.",
-    "Pitcher": "Pitcher name.",
-    "Team": "Team he pitched for in his last game of the season.",
-    "Pitches": f"Pitches thrown in {SEASON}, where more pitches means more reliable grades.",
-    IP: f"Innings pitched in {SEASON} (MLB Stats API).",
-    "Stuff+": "Pitch shape quality, where 100 is league average, 10 points is 1 standard deviation and 110 or more is very good.",
-    "Location+": "Command: how well he locates his pitches for the count, on the same 100 = average scale.",
-    "Upside Index": "Stuff+ minus Location+ in standard deviations: high = great stuff held back by command (the thesis target).",
-    "Volatility percentile": "How much his velocity and release point change from outing to outing vs. the league, where lower is steadier.",
-    "Injury risk": "0 (no IL time) to 1 (a full season or two arm IL stints) over the last few seasons.",
-    ACTUAL_WAR: f"Wins above replacement he actually produced in {SEASON}, from strikeouts, walks, hit batters, home runs and innings.",
-    PROJ_WAR: (f"Projected {NEXT_SEASON} FIP-WAR: expected runs allowed per 9 innings times expected innings. "
+    "Rank": "His place in the chosen leaderboard, after the filters.",
+    "Pitcher": "Pitcher's name.",
+    "Team": "The team he pitched for in his last game of the season.",
+    "Pitches": f"Pitches he threw in {SEASON}. More pitches means more reliable grades.",
+    IP: f"Innings he pitched in {SEASON} (an inning lasts until the other team makes three outs).",
+    "Stuff+": "How hard his pitches are to hit, judged only by speed, movement and spin. 100 is league average; 110 is very good.",
+    "Location+": "How well he aims: whether his pitches go to spots that are hard to hit for the count. 100 is league average; higher is better.",
+    "Upside Index": "Compares how good his pitches are (Stuff+) with how well he aims them (Location+). Above 0 means his pitches are better than his aim (the thesis target).",
+    "Volatility percentile": "How much his speed and release point change from game to game, compared with pitchers in his role. 50 is average; lower is steadier.",
+    "Injury risk": "How much time he has missed with injuries recently, counting arm injuries extra. 0 = none; 1 = a full season missed and two arm injuries.",
+    ACTUAL_WAR: f"Extra wins he gave his team in {SEASON} compared with an easily available backup (FIP-WAR). Higher is better.",
+    PROJ_WAR: (f"Extra wins he should give in {NEXT_SEASON} compared with an easily available backup: how well he should pitch times how much. "
                + (MODEL_NOTE + "." if MODEL_NOTE else "")),
-    ACTUAL_NEXT: f"The FIP-WAR he actually produced in {NEXT_SEASON} (0 if he did not pitch in the majors that season).",
-    SALARY: f"What he is paid in {SEASON}, in millions.",
-    "Control left": f"Seasons from {NEXT_SEASON} on that a team controls him before free agency.",
-    SURPLUS: f"Projected value minus salary over every year of control from {NEXT_SEASON} on, discounted to today.",
-    "Best pitch": "His highest Stuff+ pitch type (25+ swings).",
-    "Most used": "The pitch type he throws most.",
-    "Sample": "\"small\" = Stuff+ or Location+ is less than 50% reliable at his sample size, so it is pulled toward 100.",
+    ACTUAL_NEXT: f"The extra wins he actually gave in {NEXT_SEASON} (0 if he didn't pitch in the majors that season).",
+    SALARY: f"What he is paid in {SEASON}, in millions of dollars.",
+    "Control left": f"Seasons from {NEXT_SEASON} on before he can become a free agent and sign with any team.",
+    SURPLUS: f"His value in dollars minus his pay over the years his team still controls him, from {NEXT_SEASON} on. Positive means he is worth more than he costs.",
+    "Best pitch": "His pitch with the highest Stuff+ (among pitches with 25+ swings).",
+    "Most used": "The pitch he throws most often.",
+    "Sample": "\"small\" means we have seen too few pitches to trust his Stuff+ or Location+ yet (under 50% reliable), so it leans toward 100.",
 }
-# display column -> (pitcher_report_data metric for colors.LeaguePools, reliability column or None)
+# shown column -> (pitcher_report_data metric its color is judged on, reliability column or None)
 COLORED = {
     "Stuff+": ("StuffPlus_Scaled", "StuffPlus_Reliability"),
     "Location+": ("LocationPlus", "LocationPlus_Reliability"),
@@ -99,6 +111,7 @@ def load_league(data_version: float, season: int) -> pd.DataFrame | None:
 
 
 def is_dark_theme() -> bool:
+    """True when the viewer sees the dark theme."""
     return st.context.theme.type == "dark" if hasattr(st, "context") and hasattr(st.context, "theme") else False
 
 
@@ -112,7 +125,7 @@ if report is None:
     st.stop()
 
 pools = LeaguePools(report, neutral=NEUTRAL_COLOR if is_dark_theme() else NEUTRAL_TEXT_LIGHT)
-# no salaries file that season: no salary / control / surplus columns, preset or color option
+# no salaries file that season: no salary / control / surplus columns, leaderboard or color option
 HAS_CONTRACTS = report["Salary_M"].notna().any()
 HAS_ACTUAL_NEXT = "ActualNextWAR" in report and is_out_of_sample(SEASON)
 if not HAS_CONTRACTS:
@@ -139,6 +152,7 @@ searched = st.sidebar.multiselect("Find pitchers", sorted(report["Pitcher"].drop
 
 
 def surplus_cell(row):
+    """His surplus number, or the text shown instead for a two-way player or a free agent."""
     if "ContractValued" in row and not bool(row["ContractValued"]):
         return TWO_WAY_TEXT
     if bool(row.get("FreeAgentAfterSeason", False)):
@@ -147,7 +161,7 @@ def surplus_cell(row):
 
 
 def leaderboard(rows: pd.DataFrame, preset: str) -> pd.DataFrame:
-    """rows sorted by the preset, high to low; blanks, free agents and two-way players last."""
+    """The rows sorted by the leaderboard's column, high to low; blanks, free agents and two-way players last."""
     col = PRESETS[preset][0]
     key = rows[col].astype(float)
     if col == "MultiYearSurplus_M":
@@ -157,7 +171,7 @@ def leaderboard(rows: pd.DataFrame, preset: str) -> pd.DataFrame:
 
 
 def table(rows: pd.DataFrame) -> pd.DataFrame:
-    """Display columns (names as on the Team Value Board), ranked in the current order."""
+    """The shown table (column names as on the Team Value Board), ranked in the current order."""
     small = [is_small_sample(a) or is_small_sample(b) for a, b in zip(rows["StuffPlus_Reliability"], rows["LocationPlus_Reliability"])]
     out = pd.DataFrame({
         "Rank": np.arange(1, len(rows) + 1),
@@ -181,6 +195,7 @@ def table(rows: pd.DataFrame) -> pd.DataFrame:
 
 
 def cell_colors(shown: pd.DataFrame, rows: pd.DataFrame) -> pd.DataFrame:
+    """Each shown number's good / bad color (same shape as `shown`; None = no color)."""
     colors = pd.DataFrame(None, index=shown.index, columns=shown.columns, dtype=object)
     for col, (metric, rel_col) in COLORED.items():
         if col not in shown:
@@ -195,6 +210,7 @@ def cell_colors(shown: pd.DataFrame, rows: pd.DataFrame) -> pd.DataFrame:
 
 
 def money_or_text(v):
+    """A number as "12.3", "n/a" for a blank, or the text itself."""
     return f"{v:.1f}" if isinstance(v, (int, float, np.floating)) and pd.notna(v) else ("n/a" if v is None or (isinstance(v, float) and pd.isna(v)) else v)
 
 
@@ -206,7 +222,7 @@ FORMATS = {
 
 
 def edge_values(values: pd.Series, lo: float, hi: float) -> tuple[pd.Series, pd.Series]:
-    """(values clipped to [lo, hi], marker text "→ 249" / "← 61" for the ones that were clipped)."""
+    """(values held inside [lo, hi], arrow text "→ 249" / "← 61" for the ones moved to the edge)."""
     clipped = values.clip(lo, hi)
     text = pd.Series("", index=values.index)
     text[values > hi] = values[values > hi].map(lambda v: f"→ {v:.0f}")
@@ -215,7 +231,7 @@ def edge_values(values: pd.Series, lo: float, hi: float) -> tuple[pd.Series, pd.
 
 
 def axis_range(values: pd.Series) -> tuple[float, float]:
-    """Data range with padding, ignoring the most extreme 0.5% on each side (they're drawn at the edge)."""
+    """(low, high) axis range with padding, ignoring the most extreme 0.5% on each side (drawn at the edge instead)."""
     lo, hi = values.quantile([0.005, 0.995])
     lo, hi = min(lo, 95.0), max(hi, 105.0)
     pad = 0.06 * (hi - lo)
@@ -223,6 +239,7 @@ def axis_range(values: pd.Series) -> tuple[float, float]:
 
 
 def league_scatter(rows: pd.DataFrame, role: str, color_by: str, labeled_ids: set) -> tuple[go.Figure, dict]:
+    """(Stuff+ vs. Location+ chart for one role, its summary numbers: correlation, target-corner count, n)."""
     data = rows.dropna(subset=["StuffPlus_Final", "LocationPlus_Reg"]).copy()
     x_lo, x_hi = axis_range(data["StuffPlus_Final"])
     y_lo, y_hi = axis_range(data["LocationPlus_Reg"])
@@ -246,9 +263,9 @@ def league_scatter(rows: pd.DataFrame, role: str, color_by: str, labeled_ids: se
     fig.add_vline(x=100, line_dash="dash", line_color=BASELINE_COLOR)
     fig.add_hline(y=100, line_dash="dash", line_color=BASELINE_COLOR)
     corner = dict(showarrow=False, font=dict(size=11, color="#9A9A9A"))
-    for x, y, xa, ya, text in [(x_hi, y_lo, "right", "bottom", "Stuff > command (target)"),
+    for x, y, xa, ya, text in [(x_hi, y_lo, "right", "bottom", "Pitches better than aim (target)"),
                                (x_hi, y_hi, "right", "top", "Elite both"),
-                               (x_lo, y_hi, "left", "top", "Command > stuff"),
+                               (x_lo, y_hi, "left", "top", "Aim better than pitches"),
                                (x_lo, y_lo, "left", "bottom", "Below average both")]:
         fig.add_annotation(x=x, y=y, xanchor=xa, yanchor=ya, text=text, **corner)
 
@@ -304,8 +321,8 @@ def league_scatter(rows: pd.DataFrame, role: str, color_by: str, labeled_ids: se
                                  marker=dict(size=found["size"] + 8, symbol="circle-open", color="#111111",
                                              line=dict(width=2.5))))
     fig.update_layout(
-        xaxis=dict(title="Stuff+ (100 = league average)", range=[x_lo, x_hi]),
-        yaxis=dict(title="Location+ (100 = league average)", range=[y_lo, y_hi]),
+        xaxis=dict(title="Stuff+ (how hard to hit; 100 = league average)", range=[x_lo, x_hi]),
+        yaxis=dict(title="Location+ (aim; 100 = league average)", range=[y_lo, y_hi]),
         legend=dict(orientation="h", y=1.06, x=0), margin=dict(t=30, l=10, r=10, b=10), height=560,
     )
     stats = {
@@ -328,8 +345,8 @@ tabs = st.tabs(["Starters", "Relievers", "Teams"])
 st.session_state.setdefault("league_plot_reset", 0)
 for tab, role in zip(tabs[:2], ["starter", "reliever"]):
     with tab:
-        st.caption(f"Role is based on {SEASON} usage (starter = started half his games or more). Stuff+ and Location+ "
-                   "are graded against all qualified MLB pitchers, not just pitchers in the same role.")
+        st.caption(f"A starter begins the game; a reliever comes in later. Role is from {SEASON} (starter = started at least half his games). "
+                   "Stuff+ and Location+ compare him with all qualified pitchers, not just his role.")
         rows = report[(report["ProjectedRole"] == role) & (report["Pitches"] >= min_pitches[role]) & report["Team"].isin(teams)]
         c1, c2 = st.columns([3, 1])
         preset = c1.selectbox("Leaderboard", list(PRESETS), key=f"league_preset_{role}")
@@ -354,7 +371,7 @@ for tab, role in zip(tabs[:2], ["starter", "reliever"]):
                            mime="text/csv", key=f"league_csv_{role}")
         st.caption((f"Free agents after {SEASON} show \"{EST_FA}\" and sort last on surplus; two-way players' contracts are "
                     "not valued. " if HAS_CONTRACTS else f"{NO_CONTRACTS_TEXT}. ")
-                   + "\"small\" = Stuff+ or Location+ is under 50% reliable. Faded color = less reliable.")
+                   + "\"small\" = too few pitches to trust Stuff+ or Location+ yet (under 50% reliable). Faded color = less reliable.")
 
         st.markdown(f"**Stuff+ vs. Location+, {role}s**")
         color_by = (st.radio("Color by", ["Upside Index", "Multi-year surplus"], horizontal=True, key=f"league_color_{role}")
@@ -385,18 +402,18 @@ for tab, role in zip(tabs[:2], ["starter", "reliever"]):
                 open_report(int(options["PitcherId"].iloc[labels.index(choice)]))
 
 
-# ── Teams tab: each staff averaged / totaled vs. how the team did ────────────
+# ── Teams tab: each staff averaged and totaled, next to how the team did ─────
 # team_staff.csv (analysis/export_report_data.build_team_staff) + team_records.csv (analysis/team_records.py)
 STAFF_GROUP_LABELS = {"All pitchers": "all", "Starters": "starter", "Relievers": "reliever"}
-# pooled view: season.SEASONS order (newest first) gets categorical slot 1, then 2, 3, ... (validated together, light mode; the season
-# also has its own marker symbol and every dot carries a team label, so color is never the only cue)
+# pooled view: each season keeps one color by its place in season.SEASONS (newest first), plus its own marker
+# shape, and every dot has a team label, so color is never the only cue
 SEASON_PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"]   # validated categorical slots 1-5
 SEASON_MARKERS = ["circle", "triangle-up", "square", "diamond", "cross"]
 SINGLE_COLOR = "#2a78d6"
 PAYROLL = "Pitching payroll ($M)"
 STAFF_WAR = f"Staff {SEASON} FIP-WAR"
 STAFF_PROJ = f"Staff proj. {NEXT_SEASON} WAR"
-# display column -> (team_staff column, higher is better; None = not colored)
+# shown column -> (team_staff column, higher is better; None = not colored)
 TEAM_COLUMNS = {
     "Stuff+": ("StuffPlus", True), "Location+": ("LocationPlus", True), "Upside Index": ("UpsideIndex", True),
     "Volatility percentile": ("VolatilityPct", False), "Injury risk": ("InjuryRisk", False),
@@ -404,20 +421,20 @@ TEAM_COLUMNS = {
     SURPLUS: ("Surplus_M", True), "Upside-target pitch %": ("UpsidePitchShare", None),
 }
 TEAM_HELP = {
-    "Team": "Team code.", "W-L": f"{SEASON} regular-season record (MLB Stats API).",
-    "Run diff": "Runs scored minus runs allowed.", "Runs allowed": "Runs the team allowed (lower is better).",
-    "Pitchers": "Pitchers who threw a pitch for the team (position players not counted).",
-    "Stuff+": "Staff Stuff+: every pitcher's Stuff+ weighted by the pitches he threw for this team.",
-    "Location+": "Staff Location+, weighted by pitches thrown for this team.",
-    "Upside Index": "Staff Upside Index (Stuff+ minus Location+ in SDs), weighted by pitches thrown for this team.",
-    "Volatility percentile": "Staff outing-to-outing volatility, weighted by pitches (lower = steadier).",
-    "Injury risk": "Staff injury risk, 0 to 1, weighted by pitches.",
-    STAFF_WAR: f"Sum of the staff's {SEASON} FIP-WAR; a traded pitcher's WAR is split by his innings for each team.",
-    STAFF_PROJ: f"Sum of projected {NEXT_SEASON} WAR, a traded pitcher split by his pitch share.",
-    PAYROLL: f"{SEASON} pitching payroll: salaries file (what this team paid when it only paid part), "
-             "plus the league-minimum estimate for pitchers not in the file. Two-way players not counted.",
-    SURPLUS: f"Sum of multi-year surplus from {NEXT_SEASON} (free agents and two-way players left out), split by pitch share.",
-    "Upside-target pitch %": "Share of the team's pitches thrown by pitchers with Upside Index 1.0 or higher.",
+    "Team": "Team code.", "W-L": f"Wins and losses in the {SEASON} regular season.",
+    "Run diff": "Runs scored minus runs allowed. Higher is better.", "Runs allowed": "Runs other teams scored against this team. Lower is better.",
+    "Pitchers": "Pitchers who threw at least one pitch for the team (position players not counted).",
+    "Stuff+": "The staff's average Stuff+, where pitchers who threw more pitches for this team count more. 100 is league average.",
+    "Location+": "The staff's average Location+, weighted by pitches thrown for this team. 100 is league average.",
+    "Upside Index": "The staff's average Upside Index (how far its pitches are ahead of its aim, in typical steps), weighted by pitches.",
+    "Volatility percentile": "The staff's average game-to-game consistency percentile, weighted by pitches. Lower is steadier.",
+    "Injury risk": "The staff's average injury risk (0 to 1), weighted by pitches. Lower is healthier.",
+    STAFF_WAR: f"The staff's total extra wins in {SEASON} (FIP-WAR); a traded pitcher's wins are split by his innings for each team.",
+    STAFF_PROJ: f"The staff's total projected wins for {NEXT_SEASON}; a traded pitcher is split by his share of pitches.",
+    PAYROLL: f"What the team paid its pitchers in {SEASON}, in millions (what this team paid when it paid only part; "
+             "the league minimum for pitchers missing from the salaries file). Two-way players not counted.",
+    SURPLUS: f"The staff's total value minus pay from {NEXT_SEASON} on, split by pitch share (free agents and two-way players left out).",
+    "Upside-target pitch %": "Share of the team's pitches thrown by pitchers with an Upside Index of 1.0 or higher (pitches clearly better than aim).",
 }
 TEAM_FORMATS = {"Run diff": "{:+.0f}", "Runs allowed": "{:.0f}", "Stuff+": "{:.1f}", "Location+": "{:.1f}",
                 "Upside Index": "{:+.2f}", "Volatility percentile": "{:.0f}", "Injury risk": "{:.2f}",
@@ -425,7 +442,7 @@ TEAM_FORMATS = {"Run diff": "{:+.0f}", "Runs allowed": "{:.0f}", "Stuff+": "{:.1
                 "Upside-target pitch %": "{:.0%}", "Stuff+ (unweighted)": "{:.1f}", "Location+ (unweighted)": "{:.1f}",
                 "Upside Index (unweighted)": "{:+.2f}", "Volatility percentile (unweighted)": "{:.0f}",
                 "Injury risk (unweighted)": "{:.2f}"}
-# chart axes: label -> (column, value format)
+# chart axes: label -> (column, number format)
 X_OPTIONS = {"Staff Stuff+": ("StuffPlus", ".1f"), "Staff Location+": ("LocationPlus", ".1f"),
              "Staff Upside Index": ("UpsideIndex", "+.2f"), "Staff volatility percentile": ("VolatilityPct", ".0f"),
              "Staff FIP-WAR": ("FIPWAR", ".1f"), PAYROLL: ("Payroll_M", ".1f")}
@@ -445,12 +462,13 @@ def load_team_season(data_version: float, season: int) -> pd.DataFrame | None:
 
 
 def team_seasons_available() -> list[int]:
+    """Every season that has both team files."""
     return sorted(int(p.name) for p in DATA_ROOT.iterdir() if p.is_dir() and p.name.isdigit()
                   and (p / "team_staff.csv").exists() and (p / "team_records.csv").exists())
 
 
 def team_table(rows: pd.DataFrame, unweighted: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """(display table, cell colors): values colored against the 30 teams, each followed by its 1-30 rank."""
+    """(shown table, cell colors): values colored against the 30 teams, each followed by its 1-30 rank."""
     shown = pd.DataFrame({"Team": rows["Team"].to_numpy(),
                           "W-L": [f"{w}-{l}" for w, l in zip(rows["Wins"], rows["Losses"])],
                           "Run diff": rows["RunDiff"].to_numpy(), "Runs allowed": rows["RunsAllowed"].to_numpy(),
@@ -479,13 +497,14 @@ def team_table(rows: pd.DataFrame, unweighted: bool) -> tuple[pd.DataFrame, pd.D
 
 
 def fit_line(x: pd.Series, y: pd.Series) -> tuple[np.ndarray, np.ndarray, float]:
+    """(xs, ys of the straight-line trend, correlation r)."""
     slope, intercept = np.polyfit(x, y, 1)
     xs = np.linspace(x.min(), x.max(), 50)
     return xs, slope * xs + intercept, float(np.corrcoef(x, y)[0, 1])
 
 
 def team_scatter(data: pd.DataFrame, x_label: str, y_label: str, pooled: bool, height: int = 520) -> go.Figure:
-    """One dot per team (per team-season when pooled), team labels, OLS trend line with r / r2 / n."""
+    """One dot per team (per team-season when pooled), team labels, and a straight-line trend with r, r² and n."""
     axes = X_OPTIONS | Y_OPTIONS
     (x_col, x_fmt), (y_col, y_fmt) = axes[x_label], axes[y_label]
     data = data.dropna(subset=[x_col, y_col])
@@ -526,6 +545,7 @@ def team_scatter(data: pd.DataFrame, x_label: str, y_label: str, pooled: bool, h
 
 
 def teams_view():
+    """The Teams tab."""
     staff = load_team_season(data_version(SEASON), SEASON)
     if staff is None:
         st.info(f"No team files for {SEASON} yet (dashboard/data/{SEASON}/team_staff.csv and team_records.csv: "
@@ -546,8 +566,8 @@ def teams_view():
     shown, colors = team_table(rows, unweighted)
     st.dataframe(colored_numbers(shown, colors, TEAM_FORMATS), hide_index=True, width="stretch",
                  column_config={c: st.column_config.Column(help=TEAM_HELP.get(c.removesuffix(" rank").removesuffix(" (unweighted)"),
-                                                                             "Rank among the 30 teams: 1 = highest, except "
-                                                                             "volatility and injury risk (1 = lowest)."
+                                                                             "Where the team ranks among all 30: 1 = highest, except "
+                                                                             "volatility and injury risk, where 1 = lowest (steadiest, healthiest)."
                                                                              if c.endswith(" rank") else None))
                                 for c in shown.columns})
     st.download_button("Download CSV", shown.to_csv(index=False).encode(), mime="text/csv", key="league_team_csv",

@@ -1,4 +1,18 @@
-# Pitcher Valuation Dashboard: team + pitcher pages (routed from app.py)
+"""
+Dashboard page: one team's pitchers, the Pitcher Report (one pitcher in detail) and the Team Value Board.
+
+How it works:
+    1. Read the selected season's exports from dashboard/data/<season>/ (written by analysis/export_report_data.py
+       and analysis/stuff_plus_proxy.py).
+    2. Sidebar: league, team, pitcher (the League page can jump straight to a pitcher).
+    3. Pitcher Report: grade tiles colored against every qualified pitcher, surplus by contract year, the pitch
+       movement chart, fastball speed by game, and Stuff+ / Location+ for each kind of pitch.
+    4. Team Value Board: the staff ranked by multi-year surplus (or projected WAR when the season has no contracts),
+       plus the Stuff+ vs. Location+ chart and the value map.
+Every (?) tooltip text is in STAT_HELP, ARSENAL_HELP and BOARD_HELP below.
+
+Inputs: dashboard/data/<season>/. Outputs: the Dashboard page. Run with: streamlit run dashboard/app.py
+"""
 import sys
 from pathlib import Path
 
@@ -39,11 +53,8 @@ ACTUAL_NEXT_LABEL = f"Actual {NEXT_SEASON} WAR"
 MODEL_NOTE = projection_note(SEASON)   # which model made the projection, e.g. "Model trained on 2023->2024 only (...)"
 NO_CONTRACTS_TEXT = f"No {SEASON} contract data"
 
-# Every MLB team, by league -- (Statcast team code, full name). Lets the
-# sidebar navigate the whole league even though only a handful of pitchers
-# have real Stuff+ data loaded so far (see analysis/stuff_plus_proxy.py --pitcher).
-# Codes match pybaseball/Statcast's home_team/away_team values exactly
-# (confirmed against a real pull -- notably AZ, not ARI).
+# Every MLB team, by league: (Statcast team code, full name). Codes match Statcast's home_team / away_team values
+# exactly (checked against a real pull: AZ, not ARI).
 TEAMS_BY_LEAGUE = {
     "American League": [
         ("BAL", "Baltimore Orioles"), ("BOS", "Boston Red Sox"), ("NYY", "New York Yankees"),
@@ -63,9 +74,7 @@ TEAMS_BY_LEAGUE = {
     ],
 }
 
-# Statcast team code -> MLB Advanced Media's numeric team id, for team-logos.
-# Pulled from https://statsapi.mlb.com/api/v1/teams?sportId=1 (the
-# authoritative source) and cross-checked against the codes above.
+# Statcast team code -> MLB's numeric team id, for the team logos (from https://statsapi.mlb.com/api/v1/teams?sportId=1)
 TEAM_MLB_ID = {
     "LAA": 108, "AZ": 109, "BAL": 110, "BOS": 111, "CHC": 112, "CIN": 113,
     "CLE": 114, "COL": 115, "DET": 116, "HOU": 117, "KC": 118, "LAD": 119,
@@ -76,12 +85,12 @@ TEAM_MLB_ID = {
 
 
 def team_logo_url(team_code: str) -> str:
+    """The team's logo image address on MLB's site."""
     return f"https://www.mlbstatic.com/team-logos/{TEAM_MLB_ID[team_code]}.svg"
 
 
 def player_headshot_url(mlbam_id: int) -> str:
-    # "silo" is MLB's pre-cut transparent-background headshot variant
-    # (confirmed: real alpha channel, not just a plain PNG).
+    """The pitcher's headshot address on MLB's site ("silo" = the cut-out version with a transparent background)."""
     return (
         "https://img.mlbstatic.com/mlb-photos/image/upload/"
         "w_213,q_auto:best,f_auto/"
@@ -94,10 +103,11 @@ BASELINE_COLOR = "#8A8F98"    # the 100 reference line
 
 @st.cache_data
 def load_real_stuff_plus(data_version: float, season: int):
+    """(per-pitch-type Stuff+ table, pitch rows for the movement chart), or (None, None) before the export."""
     if not STUFF_PLUS_SUMMARY_PATH.exists():
         return None, None
     summary = pd.read_csv(STUFF_PLUS_SUMMARY_PATH)
-    # movement chart uses every pitch; fall back to scored swings if not exported yet
+    # the movement chart uses every pitch; fall back to the scored-pitches file if that isn't exported
     path = MOVEMENT_PITCHES_PATH if MOVEMENT_PITCHES_PATH.exists() else STUFF_PLUS_PITCHES_PATH
     pitches = pd.read_csv(path) if path.exists() else pd.DataFrame()
     return summary, pitches
@@ -105,13 +115,13 @@ def load_real_stuff_plus(data_version: float, season: int):
 
 @st.cache_data
 def load_location_plus(data_version: float, season: int):
-    """League-wide Location+ per pitcher x pitch type (+ overall), keyed on PitcherId. None until run."""
+    """League-wide Location+ per pitcher x pitch type (plus his overall grade), or None before the export."""
     return pd.read_csv(LOCATION_PLUS_PATH) if LOCATION_PLUS_PATH.exists() else None
 
 
 @st.cache_data
 def load_report_data(data_version: float, season: int):
-    """Risk-adjusted value + multi-year surplus, keyed on PitcherId. (None, None) until exported."""
+    """(one row per pitcher: grades, projected WAR, contract and surplus; surplus by year), or (None, None) before the export."""
     if not REPORT_PATH.exists():
         return None, None
     report = pd.read_csv(REPORT_PATH)
@@ -126,23 +136,25 @@ def load_team_paid(data_version: float, season: int) -> pd.DataFrame:
 
 
 def contract_valued(row) -> bool:
+    """False only for a pitcher whose contract isn't valued (a two-way player)."""
     return row is None or "ContractValued" not in row or bool(row["ContractValued"])
 
 
 def contract_estimated(row) -> bool:
+    """True for a pitcher on the default contract (not in the salaries file: league minimum, 1 year)."""
     return row is not None and "ContractEstimated" in row and bool(row["ContractEstimated"])
 
 
 @st.cache_data
 def load_velocity(data_version: float, season: int):
-    """Per-appearance primary fastball velocity, and IL stints (either may be empty)."""
+    """(his main fastball's average speed in each game, injured-list stints); either may be empty."""
     velocity = pd.read_csv(VELOCITY_PATH, parse_dates=["game_date"]) if VELOCITY_PATH.exists() else pd.DataFrame()
     stints = pd.read_csv(INJURY_STINTS_PATH, parse_dates=["StartDate", "EndDate"]) if INJURY_STINTS_PATH.exists() else pd.DataFrame()
     return velocity, stints
 
 
 def with_sample(value, n, unit: str, fmt="{:.0f}") -> str:
-    """ "112 (140 pitches)" -- or "n/a" when there's no value. """
+    """ "112 (140 pitches)", or "n/a" when there's no value. """
     if value is None or pd.isna(value):
         return "n/a"
     return f"{fmt.format(value)} ({n:,.0f} {unit})" if n is not None and pd.notna(n) else fmt.format(value)
@@ -153,9 +165,9 @@ SURPLUS_COLORSCALE = [[0.0, BAD_COLOR], [0.5, NEUTRAL_COLOR], [1.0, GOOD_COLOR]]
 
 
 def value_scatter(team_table: pd.DataFrame) -> go.Figure:
-    """x = projected next-season WAR, y = salary, size = years of control, color = multi-year surplus.
+    """The value map: x = projected next-season WAR, y = salary, dot size = years of control, color = surplus.
 
-    Undervalued pitchers with long control land bottom-right as large blue points.
+    Cheap production with years of control lands bottom right as large red (high surplus) dots.
     """
     data = team_table.dropna(subset=["RiskAdjWAR", "Salary_M", "MultiYearSurplus_M"])
     limit = max(abs(data["MultiYearSurplus_M"]).max(), 1) if not data.empty else 1
@@ -188,7 +200,7 @@ def value_scatter(team_table: pd.DataFrame) -> go.Figure:
 
 
 def surplus_by_year_chart(pitcher_years: pd.DataFrame, pools: LeaguePools) -> go.Figure:
-    """Each year's discounted surplus, colored vs. the league's single-season surplus pool."""
+    """Bar chart of each control year's discounted surplus, colored against the league's one-season surplus values."""
     values = pitcher_years["DiscountedSurplus"] / 1_000_000
     colors = [pools.color("SurplusActual_M", v) or NEUTRAL_COLOR for v in values]
     fig = go.Figure(go.Bar(
@@ -203,8 +215,8 @@ def surplus_by_year_chart(pitcher_years: pd.DataFrame, pools: LeaguePools) -> go
     ))
     fig.add_hline(y=0, line_color=BASELINE_COLOR)
     fig.update_layout(
-        yaxis_title="Discounted surplus ($M)",
-        xaxis_title="Control year",
+        yaxis_title="Surplus in today's dollars ($M)",
+        xaxis_title="Season under team control",
         showlegend=False,
         margin=dict(t=25, l=10, r=10, b=10),
         height=300,
@@ -213,21 +225,21 @@ def surplus_by_year_chart(pitcher_years: pd.DataFrame, pools: LeaguePools) -> go
 
 
 def pitch_order(pitch_types) -> list:
+    """The pitch types in the standard order (fastballs first), unknown ones last."""
     known = [p for p in PITCH_TYPE_ORDER if p in set(pitch_types)]
     unknown = sorted(set(pitch_types) - set(known))
     return known + unknown
 
 
 MOVEMENT_AXIS_LIMIT = 25          # inches, both axes fixed at +/- this
-MOVEMENT_GRID_STEP = 12.5
-MIN_PITCHES_FOR_BUBBLE = 15
+MOVEMENT_GRID_STEP = 12.5         # inches between grid lines
+MIN_PITCHES_FOR_BUBBLE = 15       # pitches of a type needed to draw its bubble
 BUBBLE_SD = 2.0                   # ellipse drawn at this many SDs (2.0 ~ 86% of pitches for a 2D normal)
 ARM_ANGLE_LINE_LENGTH = 20        # inches along the arm angle line
 
 
 def is_dark_theme() -> bool:
-    # st.context.theme reports the viewer's active theme; theme.base covers a dark theme
-    # forced in .streamlit/config.toml (context still reports "light" in that case)
+    """True when the viewer sees the dark theme (st.context.theme, or a dark theme forced in .streamlit/config.toml)."""
     try:
         return st.context.theme.type == "dark" or st.get_option("theme.base") == "dark"
     except Exception:
@@ -240,7 +252,7 @@ def chart_ink() -> str:
 
 
 def covariance_ellipse(x: pd.Series, y: pd.Series, n_sd: float = BUBBLE_SD, points: int = 60):
-    """(xs, ys) outline of the n_sd covariance ellipse of (x, y), from the eigenvectors/eigenvalues."""
+    """(xs, ys): the outline of the oval holding most of the pitches, n_sd standard deviations out (covariance ellipse)."""
     cov = np.cov(np.vstack([x, y]))
     eigvals, eigvecs = np.linalg.eigh(cov)
     eigvals = np.clip(eigvals, 0, None)
@@ -251,10 +263,10 @@ def covariance_ellipse(x: pd.Series, y: pd.Series, n_sd: float = BUBBLE_SD, poin
 
 
 def movement_chart(pitches: pd.DataFrame, stuff_rows: pd.DataFrame | None = None, location_rows: pd.DataFrame | None = None) -> go.Figure:
-    """Pitcher's-view movement chart: faint pitch dots, a covariance bubble per pitch type, arm angle line.
+    """The movement chart, from the pitcher's view: faint pitch dots, one bubble per pitch type, and his arm angle line.
 
-    hb_arm flips hb (catcher's view) so arm-side movement is always positive:
-    RHP fastballs/sinkers/changeups land on the right, sweepers/curves on the left.
+    hb_arm flips hb (catcher's view) so movement toward his arm side is always positive: a right-hander's
+    fastballs, sinkers and changeups land on the right, sweepers and curves on the left.
     """
     ink = chart_ink()
     pitches = pitches.copy()
@@ -290,7 +302,7 @@ def movement_chart(pitches: pd.DataFrame, stuff_rows: pd.DataFrame | None = None
             f"Stuff+: {stuff_text} · Location+: {location_text} (regressed)<extra></extra>"
         )
         stuff_value = stuff.get(pitch_type) if pitch_type in stuff.index else None
-        # red/blue by this pitch's Stuff+ vs. its pitch type, faded by reliability
+        # outline red / blue by this pitch's Stuff+ against its pitch type, faded when the sample is small
         outline = stat_color(stuff_value, 100, 10, True, reliability=stuff_rel.get(pitch_type))
         fig.add_trace(go.Scatter(
             x=xs, y=ys, mode="lines", fill="toself",
@@ -323,7 +335,7 @@ def movement_chart(pitches: pd.DataFrame, stuff_rows: pd.DataFrame | None = None
             x=[0], y=[0], mode="markers", marker=dict(symbol="square", size=10, color=ink),
             hoverinfo="skip", showlegend=False,
         ))
-        # label sits just above the midpoint of the line, rotated to follow it
+        # label sits just above the middle of the line, rotated to follow it
         offset = 1.8
         fig.add_annotation(
             x=x_end * 0.55 - offset * np.sin(np.radians(angle)),
@@ -336,8 +348,8 @@ def movement_chart(pitches: pd.DataFrame, stuff_rows: pd.DataFrame | None = None
         showgrid=True, gridcolor="rgba(128,128,128,0.25)", griddash="dash",
         zeroline=False, fixedrange=True,
     )
-    fig.update_xaxes(title="Horizontal break (in, arm side +)", **axis)
-    fig.update_yaxes(title="Induced vertical break (in)", scaleanchor="x", scaleratio=1, **axis)
+    fig.update_xaxes(title="Sideways movement (in, + = toward his arm side)", **axis)
+    fig.update_yaxes(title="Rise vs. a spinless ball (induced vertical break, in)", scaleanchor="x", scaleratio=1, **axis)
     fig.add_hline(y=0, line_dash="dash", line_color=ink, line_width=1)
     fig.add_vline(x=0, line_dash="dash", line_color=ink, line_width=1)
     fig.update_layout(showlegend=False, height=520, margin=dict(t=10, l=60, r=10, b=55))
@@ -349,7 +361,7 @@ IL_FILL = "rgba(216, 33, 41, 0.12)"
 
 
 def velocity_chart(games: pd.DataFrame, stints: pd.DataFrame) -> go.Figure:
-    """Average primary-fastball velocity per appearance, season mean (dashed) +/- 1 SD band, IL stints shaded."""
+    """His main fastball's average speed in each game, with the season average (dashed), a ±1 SD band and IL stints shaded."""
     ink = chart_ink()
     games = games.sort_values("game_date")
     fastball = pitch_name(games["PitchType"].iloc[0])
@@ -361,7 +373,7 @@ def velocity_chart(games: pd.DataFrame, stints: pd.DataFrame) -> go.Figure:
                   annotation_text=f"Season avg {mean:.1f}", annotation_position="top left",
                   annotation_font=dict(size=11, color=ink))
 
-    # config's Apr 1 - Sep 30 window, in the selected season (config.START_DATE / END_DATE carry config.SEASON's year)
+    # config's April 1 to September 30 window, in the selected season (config.START_DATE / END_DATE carry config.SEASON's year)
     season_start, season_end = pd.Timestamp(f"{SEASON}{START_DATE[4:]}"), pd.Timestamp(f"{SEASON}{END_DATE[4:]}")
     for _, stint in stints.iterrows():  # one row per stint per season; clipped to this season below
         start = max(stint["StartDate"], season_start)
@@ -381,7 +393,7 @@ def velocity_chart(games: pd.DataFrame, stints: pd.DataFrame) -> go.Figure:
         showlegend=False,
     ))
     pad = max(sd if pd.notna(sd) else 0, 0.5) * 3
-    fig.update_yaxes(title=f"Avg {fastball} velocity (mph)",
+    fig.update_yaxes(title=f"Average {fastball} speed (mph)",
                      range=[games["AvgVelo"].min() - pad / 3, games["AvgVelo"].max() + pad / 3],
                      gridcolor="rgba(128,128,128,0.2)")
     fig.update_xaxes(title="Game date", range=[season_start, season_end], showgrid=False)
@@ -389,64 +401,62 @@ def velocity_chart(games: pd.DataFrame, stints: pd.DataFrame) -> go.Figure:
     return fig
 
 
-SCALE_CAPTION = "100 = league average, 10 points = 1 standard deviation."
+SCALE_CAPTION = "100 = league average; every 10 points is one typical step (standard deviation) above or below."
 
-# One plain sentence per stat: what it measures and what a good number looks like (hover help)
+# (?) help on each stat tile and column: one plain sentence on what it measures, then what a good number looks like
 STAT_HELP = {
-    "Stuff+": "Pitch shape quality, where 100 is league average, 10 points is 1 standard deviation and 110 or more is very good.",
-    "Location+": "Command (where pitches cross the plate for the count), where 100 is league average and higher is better.",
-    "Volatility percentile": "How much velocity and release point change from outing to outing compared to the league, where lower is better and 50 is average.",
-    PROJ_WAR_LABEL: (f"How many wins above a replacement-level pitcher he is expected to add in {NEXT_SEASON}: "
-                     "expected runs allowed per 9 innings (from his Stuff+, Location+ and this year's results) times "
-                     "expected innings (from his innings, age, injury history and volatility); higher is better. "
+    "Stuff+": "How hard his pitches are to hit, judged only by speed, movement and spin. 100 is league average; 110 is very good.",
+    "Location+": "How well he aims: whether his pitches go to spots that are hard to hit for the count. 100 is league average; higher is better.",
+    "Volatility percentile": "How much his speed and release point change from game to game, compared with pitchers in his role. 50 is average; lower is steadier.",
+    PROJ_WAR_LABEL: (f"How many extra wins he should give his team in {NEXT_SEASON} compared with an easily available "
+                     "backup (0): how well he should pitch times how much. "
                      + (MODEL_NOTE + "." if MODEL_NOTE else "")),
-    ACTUAL_NEXT_LABEL: (f"The FIP-WAR he actually produced in {NEXT_SEASON}, the season the projection is for "
-                        f"(0 if he did not pitch in the majors in {NEXT_SEASON}). Compare it with {PROJ_WAR_LABEL}: "
-                        "the projection was made without knowing it."),
-    ACTUAL_WAR_LABEL: (f"Wins above replacement he actually produced in {SEASON}, from his strikeouts, walks, hit "
-                       "batters, home runs and innings (FanGraphs' FIP-WAR method, without park or bullpen-leverage "
-                       "adjustments). Higher is better."),
-    SURPLUS_LABEL: (f"Projected value minus salary over every year of team control he has left, starting in "
-                    f"{NEXT_SEASON} (the first season a team trading for him now would get), in today's dollars. "
-                    "Positive means underpaid. Blank for a pitcher who becomes a free agent after "
-                    f"{SEASON}: there are no team-controlled years left to value."),
-    f"{SEASON} surplus": (f"Looking back: what his actual {SEASON} FIP-WAR was worth minus his {SEASON} salary. "
+    ACTUAL_NEXT_LABEL: (f"The extra wins he actually gave in {NEXT_SEASON} (FIP-WAR; 0 if he didn't pitch in the majors "
+                        f"in {NEXT_SEASON}). Compare it with {PROJ_WAR_LABEL}, which was made without knowing it."),
+    ACTUAL_WAR_LABEL: (f"Extra wins he gave his team in {SEASON} compared with an easily available backup, counting "
+                       "only strikeouts, walks, hit batters and home runs (FIP-WAR). "
+                       "Higher is better."),
+    SURPLUS_LABEL: (f"His value in dollars minus his pay, added up over the years his team still controls him, from "
+                    f"{NEXT_SEASON} on. "
+                    "Positive means he is worth more than he costs; blank for a free agent after "
+                    f"{SEASON}."),
+    f"{SEASON} surplus": (f"Looking back: what his {SEASON} wins were worth in dollars minus his {SEASON} pay. "
                           "Positive means he was underpaid."),
-    f"{SEASON} salary": f"What the pitcher is paid in {SEASON} in millions, where lower is better for the same production.",
-    "Control left": (f"Seasons from {NEXT_SEASON} on that the team controls the pitcher before free agency (0 = free agent "
-                     f"after {SEASON}), where more years of a good pitcher is better."),
-    "Pitches": f"Pitches thrown in {SEASON}, where more pitches means more reliable grades.",
-    "Sample": "\"small\" means the sample is too small for the grade to be reliable yet (reliability under 0.5).",
-    "Contract": "Notes on the contract, such as an estimated contract or a two-way player whose salary is not valued.",
-    "Pitch mix": "Shown when the pitcher's most used pitch is not his best pitch by Stuff+, a sign he could add value by changing his mix.",
+    f"{SEASON} salary": f"What he is paid in {SEASON}, in millions of dollars. Lower is better for the same production.",
+    "Control left": (f"Seasons from {NEXT_SEASON} on before he can become a free agent and sign with any team (0 = free "
+                     f"agent after {SEASON}). More years of a good pitcher is better."),
+    "Pitches": f"Pitches he threw in {SEASON}. More pitches means more reliable grades.",
+    "Sample": "\"small\" means we have seen too few pitches to trust the grade yet (under 50% reliable), so it leans toward average.",
+    "Contract": "Notes on how his contract was valued, e.g. an estimated contract, or a two-way player (who also hits) whose salary isn't valued.",
+    "Pitch mix": "Shown when his most-used pitch isn't his best one by Stuff+. He might gain just by throwing his best pitch more.",
 }
 STUFF_COLOR = "#0072B2"      # team scatter points
 
 
 ARSENAL_HELP = {
-    "Pitch": "The pitch type, with its standard abbreviation used in the charts.",
+    "Pitch": "The kind of pitch, with the short code the charts use.",
     "Pitches": f"How many times he threw this pitch in {SEASON}.",
-    "Velo (mph)": "Average release speed of this pitch.",
-    "IVB (in)": "Induced vertical break: how much the pitch rises (+) or drops (-) compared to a spinless ball.",
-    "HB (in, arm side +)": "Horizontal break toward the pitcher's arm side (+) or glove side (-).",
-    "Usage": "Share of his pitches that were this pitch.",
-    "Stuff+": "Pitch shape quality vs. the league's pitches of the same type, where 100 = league average and 10 points = 1 standard deviation.",
-    "Location+": "Command of this pitch vs. the league's pitches of the same type, where 100 = league average and higher is better.",
-    "Stuff+ raw": "Stuff+ before it is pulled toward 100 for sample size and for unusual pitch shapes the model has few comparable pitches for.",
-    "Location+ raw": "Location+ before it is pulled toward 100 for sample size.",
+    "Velo (mph)": "How fast this pitch is thrown, on average (miles per hour).",
+    "IVB (in)": "Induced vertical break: how much the pitch rises (+) or drops (-) compared with a ball thrown with no spin, in inches.",
+    "HB (in, arm side +)": "Sideways movement in inches: toward his throwing-arm side (+) or his glove side (-).",
+    "Usage": "Share of all his pitches that were this pitch.",
+    "Stuff+": "How hard this pitch is to hit, compared with other pitchers' pitches of the same kind. 100 is average; higher is better.",
+    "Location+": "How well he aims this pitch, compared with other pitchers' pitches of the same kind. 100 is average; higher is better.",
+    "Stuff+ raw": "Stuff+ before the small-sample and unusual-pitch adjustments pull it toward 100.",
+    "Location+ raw": "Location+ before the small-sample adjustment pulls it toward 100.",
     "Sample": STAT_HELP["Sample"],
 }
 
 
 BOARD_HELP = {
-    "Pitcher": "Pitcher name; a traded pitcher is listed under each team he pitched for.",
+    "Pitcher": "Pitcher's name; a pitcher traded during the season is listed under each team he pitched for.",
     "Pitches": STAT_HELP["Pitches"],
     "Stuff+": STAT_HELP["Stuff+"],
     "Location+": STAT_HELP["Location+"],
     "Sample": STAT_HELP["Sample"],
-    "Role": f"Starter or reliever, from his {SEASON} games started (starter = started half his games or more).",
+    "Role": f"Starter (begins the game) or reliever (comes in later), from his {SEASON} games: a starter started at least half of them.",
     f"Proj. {NEXT_SEASON} WAR": STAT_HELP[PROJ_WAR_LABEL],
-    f"Proj. {NEXT_SEASON} IP": f"Innings he is expected to pitch in {NEXT_SEASON} (0 if the model expects him to miss the year).",
+    f"Proj. {NEXT_SEASON} IP": f"Innings he is expected to pitch in {NEXT_SEASON} (0 if the model expects him to miss the season).",
     f"Actual {NEXT_SEASON} WAR": STAT_HELP[ACTUAL_NEXT_LABEL],
     f"{SEASON} FIP-WAR": STAT_HELP[ACTUAL_WAR_LABEL],
     f"{SEASON} salary ($M)": STAT_HELP[f"{SEASON} salary"],
@@ -459,21 +469,22 @@ BOARD_HELP = {
 
 
 def pitch_mix_text(most_used: str, best: str) -> str:
+    """ "Most used: Sinker · Best: Sweeper". """
     return f"Most used: {pitch_name(most_used)} · Best: {pitch_name(best)}"
 
 
 def per_type(rows: pd.DataFrame | None, cols: list[str]) -> pd.DataFrame:
+    """`cols` of a pitcher's per-pitch-type rows, indexed by pitch type (empty if missing)."""
     if rows is None or rows.empty or not set(cols) <= set(rows.columns):
         return pd.DataFrame(columns=cols)
     return rows.set_index("PitchType")[cols]
 
 
 def stuff_location_bar_chart(stuff_rows: pd.DataFrame, location_rows: pd.DataFrame, types: list[str]) -> go.Figure:
-    """Grouped bars per pitch type (in `types` order): regressed Stuff+ (solid) next to regressed Location+ (hatched).
+    """Bars per pitch type (in `types` order): small-sample Stuff+ (solid) next to small-sample Location+ (striped).
 
-    Bar color = stat_color of that bar's value (red = better than league
-    average, blue = worse), faded toward gray by its reliability; the
-    solid/hatched pattern tells the two apart. * = small sample.
+    Bar color = better (red) or worse (blue) than league average, faded toward gray when the sample is small;
+    * = small sample.
     """
     stuff = per_type(stuff_rows, ["StuffPlus_Final", "StuffPlus_Scaled", "Pitches", "StuffPlus_Reliability"])
     location = per_type(location_rows, ["LocationPlus_Reg", "LocationPlus", "Pitches", "LocationPlus_Reliability"])
@@ -507,8 +518,8 @@ def stuff_location_bar_chart(stuff_rows: pd.DataFrame, location_rows: pd.DataFra
     fig.update_yaxes(range=[0, top * 1.15])
     fig.update_layout(
         barmode="group",
-        yaxis_title="Scaled (100 = league avg)",
-        xaxis_title="Pitch",
+        yaxis_title="Grade (100 = league average)",
+        xaxis_title="Pitch type",
         legend=dict(orientation="h", y=1.1, x=0),
         margin=dict(t=40, l=10, r=10, b=10),
         height=380,
@@ -517,7 +528,7 @@ def stuff_location_bar_chart(stuff_rows: pd.DataFrame, location_rows: pd.DataFra
 
 
 def stuff_location_scatter(staff: pd.DataFrame) -> go.Figure:
-    """Stuff+ (x) vs Location+ (y) for a staff. Bottom-right = good stuff, poor location."""
+    """Stuff+ (x) vs. Location+ (y) for a staff; bottom right = good pitches, weaker aim (the Upside targets)."""
     data = staff.dropna(subset=["StuffScaled", "LocationPlus"])
     fig = go.Figure()
     for qualified, label, symbol in [(True, "Qualified", "circle"), (False, "Under pitch minimum", "circle-open")]:
@@ -541,12 +552,12 @@ def stuff_location_scatter(staff: pd.DataFrame) -> go.Figure:
         y_min = min(data["LocationPlus"].min(), 100) - 2
         fig.add_annotation(
             x=x_max, y=y_min, xanchor="right", yanchor="bottom", showarrow=False,
-            text="<b>Asymmetric upside</b><br>good stuff, poor location", font=dict(size=11, color="#333"),
+            text="<b>Upside targets</b><br>pitches better than aim", font=dict(size=11, color="#333"),
             align="right",
         )
     fig.update_layout(
-        xaxis_title="Stuff+ (scaled, regressed)",
-        yaxis_title="Location+ (regressed)",
+        xaxis_title="Stuff+ (how hard to hit; 100 = average)",
+        yaxis_title="Location+ (aim; 100 = average)",
         legend=dict(orientation="h", y=1.08, x=0),
         margin=dict(t=30, l=10, r=10, b=10),
         height=460,
@@ -562,7 +573,7 @@ team_paid = load_team_paid(data_version(SEASON), SEASON)
 # a season with no salaries file has no contracts at all: salary, surplus and contract columns and tiles are hidden
 HAS_CONTRACTS = report_data is not None and report_data["Salary_M"].notna().any()
 HAS_ACTUAL_NEXT = report_data is not None and "ActualNextWAR" in report_data and is_out_of_sample(SEASON)
-# league-wide qualified pool for every color; darker league-average gray for numbers on white
+# every color compares with the league-wide qualified pitchers; numbers on white use a darker league-average gray
 pools = LeaguePools(report_data, neutral=NEUTRAL_COLOR if is_dark_theme() else NEUTRAL_TEXT_LIGHT)
 chart_pools = LeaguePools(report_data)   # chart fills keep the standard #BFBFBF midpoint
 
@@ -572,6 +583,7 @@ ALL_MLB = "All MLB"   # first Team option: opens the League page
 
 
 def team_label(code: str, name: str) -> str:
+    """ "Pittsburgh Pirates (PIT)". """
     return f"{name} ({code})"
 
 
@@ -630,7 +642,7 @@ else:
 # Main page header
 st.title("Pitcher Valuation & Mispricing Dashboard")
 st.caption(
-    "Goal is identify pitchers whose volatility, not raw talent, is "
+    "Goal: find pitchers whose inconsistency, not their raw talent, is "
     "being mispriced by the market."
 )
 
@@ -679,7 +691,7 @@ with tab_report:
         def money(v):
             return f"{'-' if v < 0 else ''}${abs(v):.1f}M"
 
-        # (label, metric key in colors.METRIC_DIRECTION, regressed value, raw value, n, unit, reliability, formatter)
+        # (label, metric key in colors.METRIC_DIRECTION, small-sample value, unadjusted value, n, unit, reliability, format)
         grade_cards = [
             ("Stuff+", "StuffPlus_Scaled_Reg", value_of(stuff_overall, "OverallStuffPlus_Final"),
              value_of(stuff_overall, "OverallStuffPlus_Scaled"), value_of(stuff_overall, "OverallPitches"), "pitches",
@@ -734,19 +746,19 @@ with tab_report:
         if not HAS_CONTRACTS:
             st.caption(f"{NO_CONTRACTS_TEXT}: salary, surplus and contract values aren't shown for this season.")
 
-        st.caption(SCALE_CAPTION + " Percentile = share of the qualified league pool this pitcher is better than. "
-                   "Hover a number for its raw (unregressed) value.")
+        st.caption(SCALE_CAPTION + " Percentile = the share of qualified pitchers he is better than. "
+                   "Hover a number for its value before the small-sample adjustment.")
 
         if report_row is None:
             st.info(
-                f"This pitcher threw under config.MIN_PITCHES_TO_DISPLAY ({MIN_PITCHES_TO_DISPLAY}) pitches, "
-                "so there are no regressed grades or risk-adjusted value to show."
+                f"This pitcher threw fewer than {MIN_PITCHES_TO_DISPLAY} pitches (config.MIN_PITCHES_TO_DISPLAY), "
+                "too few to grade or project."
             )
         else:
             st.caption(
                 ("" if report_row.get("Qualified", True) else
-                 f"Under {MIN_PITCHES_FOR_INCLUSION} pitches: shown with regressed values, not in the league grading pool. ")
-                + f"Graded against every qualified MLB pitcher. Volatility path: {report_row['VolatilityPath']}. "
+                 f"Under {MIN_PITCHES_FOR_INCLUSION} pitches: shown with small-sample grades, not part of the league average. ")
+                + f"Graded against every qualified MLB pitcher. Volatility compared with: {report_row['VolatilityPath']}. "
                 + (f"{NO_CONTRACTS_TEXT}. " if not HAS_CONTRACTS else
                    f"Contract: {report_row['ValueNote']}. " if not contract_valued(report_row) else
                    f"Contract: {report_row['ContractStatus']}, {report_row['RemainingControl']:.0f} year(s) of control left "
@@ -782,8 +794,8 @@ with tab_report:
             if {"p_throws", "arm_angle"} <= set(pitcher_pitches.columns):
                 st.plotly_chart(movement_chart(pitcher_pitches, pitcher_summary, pitcher_location_rows), width='stretch')
                 st.caption(
-                    f"Bubbles cover ~{1 - np.exp(-BUBBLE_SD ** 2 / 2):.0%} of each pitch type ({BUBBLE_SD:g} SD); "
-                    f"pitch types with {MIN_PITCHES_FOR_BUBBLE}+ pitches. Arm angle is the season average."
+                    f"Each bubble holds about {1 - np.exp(-BUBBLE_SD ** 2 / 2):.0%} of that pitch type ({BUBBLE_SD:g} standard deviations); "
+                    f"pitch types with {MIN_PITCHES_FOR_BUBBLE}+ pitches. The line is his average arm angle (how high his arm is at release)."
                 )
             else:
                 st.caption("Re-run `python -m analysis.stuff_plus_proxy --team XXX` to export movement data.")
@@ -802,8 +814,8 @@ with tab_report:
                     injury_stints[injury_stints["PitcherId"] == pitcher_id] if not injury_stints.empty else pd.DataFrame()
                 )
                 st.plotly_chart(velocity_chart(pitcher_games, pitcher_stints), width='stretch')
-                st.caption("Dashed line = season average, gray band = ±1 SD across appearances, "
-                           "red spans = IL stints this season. Primary fastball: Four-Seam Fastball, else Sinker, else Cutter.")
+                st.caption("Dashed line = season average; gray band = his typical game-to-game range (±1 standard deviation); "
+                           "red spans = time on the injured list. Fastball shown: four-seam if he throws one, else sinker, else cutter.")
 
         # one pitch-type order everywhere below: most used first
         usage_counts = pitcher_pitches["PitchType"].value_counts()
@@ -811,9 +823,9 @@ with tab_report:
 
         st.markdown("**Stuff+ and Location+ by pitch type**")
         st.plotly_chart(stuff_location_bar_chart(pitcher_summary, pitcher_location_rows, used_types), width='stretch')
-        st.caption(SCALE_CAPTION + " Regressed values (hover for raw); faded color = less reliable, * = small sample "
-                   f"(reliability < 0.5). Pitch types under {MIN_PITCHES_PER_TYPE_TO_DISPLAY} pitches show n/a. "
-                   "Hatched bars = Location+. Ordered by usage.")
+        st.caption(SCALE_CAPTION + " Small samples are pulled toward 100 (hover for the unadjusted value); faded color = less reliable, * = too small "
+                   f"to trust yet (under 50% reliable). Pitch types under {MIN_PITCHES_PER_TYPE_TO_DISPLAY} pitches show n/a. "
+                   "Solid bars = Stuff+, striped = Location+. Most-used pitch first.")
 
         key_line = " · ".join(f"**{pitch_abbr(p)}** {pitch_name(p)}" for p in used_types)
         st.caption(f"Pitch type key: {key_line}")
@@ -840,7 +852,7 @@ with tab_report:
             arsenal.insert(0, "Pitch", [f"{pitch_name(p)} ({pitch_abbr(p)})" for p in arsenal.index])
             arsenal = arsenal.rename(columns={"Velo": "Velo (mph)", "HB": "HB (in, arm side +)", "IVB": "IVB (in)"})
 
-            # Stuff+/Location+ are already graded within each pitch type (100 = league avg for that pitch)
+            # Stuff+ / Location+ are already graded within each pitch type (100 = league average for that pitch)
             cell_colors = pd.DataFrame(None, index=arsenal.index, columns=arsenal.columns, dtype=object)
             cell_colors["Stuff+"] = [stat_color(v, 100, 10, True, pools.neutral, stuff_rel.get(p)) for p, v in arsenal["Stuff+"].items()]
             cell_colors["Location+"] = [
@@ -856,9 +868,9 @@ with tab_report:
                 width='stretch', hide_index=True,   # index is the Statcast code; the Pitch column labels it
                 column_config={col: st.column_config.Column(help=text) for col, text in ARSENAL_HELP.items()},
             )
-            st.caption("Stuff+ and Location+ compare each pitch to the league's pitches of that type, regressed toward "
-                       "100 by sample size (raw columns unregressed; faded color = less reliable). Stuff+ is also pulled "
-                       "toward 100 for a pitch shape with few comparable pitches in the league. " + SCALE_CAPTION)
+            st.caption("Stuff+ and Location+ compare each pitch with other pitchers' pitches of the same kind, pulled toward "
+                       "100 when the sample is small (the \"raw\" columns are before that; faded color = less reliable). Stuff+ is also pulled "
+                       "toward 100 for a pitch shape almost nobody else throws. " + SCALE_CAPTION)
 
 
 # Tab 2: team view, ranked by multi-year surplus
@@ -965,7 +977,7 @@ with tab_board:
             width='stretch', hide_index=True,
             column_config={col: st.column_config.Column(help=text) for col, text in BOARD_HELP.items() if col in shown},
         )
-        st.caption("Stuff+ / Location+ are regressed toward 100 by sample size; faded color = less reliable. "
+        st.caption("Stuff+ and Location+ are pulled toward 100 when the sample is small; faded color = less reliable. "
                    + (f"Contract: \"{EST_CONTRACT_TAG}\" = not in the salaries file, valued at the league minimum for 1 year; "
                       "two-way players' contracts are not valued. "
                       f"\"Free agent after {SEASON}\" = no control years left, so no surplus is shown (not counted as zero)."
@@ -977,9 +989,9 @@ with tab_board:
         st.markdown("**Stuff+ vs. Location+**")
         st.plotly_chart(stuff_location_scatter(team_table.rename(columns={
             "OverallLocationPlus": "LocationPlus", "OverallQualified": "Qualified"})), width='stretch')
-        st.caption(SCALE_CAPTION + " Bottom right = good stuff held back by location: the asymmetric upside group.")
+        st.caption(SCALE_CAPTION + " Bottom right = pitches better than his aim: the Upside targets.")
 
         if HAS_CONTRACTS:
-            st.markdown("**Value map**: bottom-right, large, blue = cheap production with long control")
+            st.markdown("**Value map**: bottom right, large and red = cheap production with years of control left")
             st.plotly_chart(value_scatter(team_table), width='stretch')
-            st.caption("Point size = years of control used (capped at config.MAX_CONTROL_YEARS). Color = multi-year surplus.")
+            st.caption("Dot size = years of team control counted (at most config.MAX_CONTROL_YEARS). Color = multi-year surplus (red = worth more than he costs).")

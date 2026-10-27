@@ -1,14 +1,14 @@
-"""Season selection shared by every page.
+"""
+The Season selector shared by every page, and which WAR model projected each season.
 
-app.py renders the Season selectbox (key "season") at the top of the sidebar on
-every run, so st.session_state["season"] is the same on the Home, Dashboard and
-League pages. Each season's exports live in dashboard/data/<season>/ with the
-same file names (written by analysis/export_report_data.py and friends).
+How it works:
+    1. app.py draws the Season box at the top of the sidebar on every run, so the chosen season is the same on the
+       Home, Dashboard and League pages. Each season's files live in dashboard/data/<season>/ with the same names.
+    2. A season's war_model.json says which model made its next-season projection: past seasons carry a model fit
+       on one season pair, marked "out_of_sample" with a plain-words "note" (analysis/war_calibration.pair_model);
+       the others carry the frozen model (results_frozen/war_model_2025.json).
 
-Which WAR model made a season's next-season projection is read from that
-season's war_model.json: past seasons carry the single-pair model with
-"out_of_sample": true and a "note" (analysis/war_calibration.pair_model); the
-others carry the frozen model (results_frozen/war_model_2025.json).
+Imported by the dashboard pages; not run on its own.
 """
 import json
 import re
@@ -35,14 +35,17 @@ def season_selector() -> int:
 
 
 def _remember():
+    """Copy the selector's value into the plain key that survives page switches."""
     st.session_state[SEASON_MEMORY_KEY] = st.session_state[SEASON_KEY]
 
 
 def selected_season() -> int:
+    """The season chosen in the sidebar (the newest one by default)."""
     return int(st.session_state.get(SEASON_MEMORY_KEY, st.session_state.get(SEASON_KEY, SEASONS[0])))
 
 
 def data_dir(season: int | None = None) -> Path:
+    """dashboard/data/<season>/ (the selected season by default)."""
     return DATA_ROOT / str(season or selected_season())
 
 

@@ -1,50 +1,31 @@
 """
-Stuff+ pitch-quality model built on public Statcast data via pybaseball.
+Stuff+: how hard each pitcher's pitches are to hit, from how the ball moves (100 = league average; higher is better).
 
-Stuff+ and Location+ are proprietary (FanGraphs/PitcherList), so this trains
-its own proxy: one whiff-probability model per pitch type on raw pitch
-physics (velocity, movement, spin, extension), scaled to a 100-average scale
-the same way the proprietary metrics are.
+In simple terms: Stuff+ judges a pitch only by its speed, movement and spin, and estimates how often a batter
+who swings at it will miss it completely (a "whiff"). Where the pitch was thrown is ignored (that is Location+).
 
-v2 (current):
-- Handedness: hb, release_pos_x and spin_axis are in the catcher's view, so
-  a LHP slider and a RHP slider have opposite signs. to_rhp_frame() mirrors
-  left-handers into the right-hander frame before fitting AND scoring (the
-  saved raw hb/release columns used by the movement chart are untouched).
-- Trained on swings (the model is P(whiff | swing, pitch shape)), but every
-  pitch of that type is scored, so a pitcher's grade uses his whole arsenal
-  sample, not just the pitches that happened to be swung at.
-- Out-of-fold: 5-fold GroupKFold by pitcher, so a pitcher's own pitches
-  never train the model that grades him (same as location_plus_proxy.py).
-  Out-of-fold AUC / log loss vs. a constant-whiff-rate baseline per pitch
-  type go to data/stuff_plus_validation.csv.
+How it works (each pitch type, e.g. fastballs or sliders, separately):
+    1. Mirror lefties. Statcast measures sideways movement, release side and spin direction from the catcher's
+       view, so we flip left-handers into the right-hander's frame and both are graded on the same terms.
+    2. Scale the traits (speed, IVB = induced vertical break, i.e. rise, sideways break, spin rate, spin axis,
+       extension, release height and side, perceived speed) to average 0 and spread 1, so big numbers like spin
+       rate (about 2,200 rpm) don't drown out small ones like extension (about 6.5 feet).
+    3. Train a logistic regression on swings only: it gives each trait a weight, and a positive weight means more
+       of that trait makes a miss more likely. Squared speed and break terms allow "more is better, up to a point".
+    4. Score out of fold: pitchers are split into 5 groups (GroupKFold) and each group is scored by a model
+       trained on the other 4, so no pitcher is graded by a model that saw his own pitches. Every pitch is scored.
+    5. Grade within the pitch type: his average whiff chance for a pitch type becomes a z-score (how many typical
+       steps above or below average) against qualified pitchers' same pitch type.
+    6. Combine his pitches: usage-weighted average of those z-scores, put on the 100 + 10 x z scale.
+    7. Small samples: pulled toward 100 with k = the stabilization point from analysis/stabilization.py.
+    8. Unusual pitches: a shape almost nobody else throws is pulled toward 100 by its comparability (0 to 1).
+Earlier versions are kept as StuffPlus_v1 / StuffPlus_v2 for comparison.
 
-v3 (current, on top of v2):
-- Whiff model: STUFF_MODEL, picked by analysis/stuff_plus_model_comparison.py
-  (lowest out-of-fold log loss of four model types, rule fixed in advance).
-- Pitcher grade from z-scores, not raw ratios: each pitch type is z-scored
-  within its type, the pitcher's overall z is the usage-weighted average of
-  his per-type z, then 100 + 10 z against the qualified pitchers. (Averaging
-  ratios let one extreme ratio -- Tyler Rogers' sinker at 752 -- dominate.)
-- Comparability (out-of-distribution shrinkage): for each pitch, the share
-  of its COMPARABLE_NEIGHBORS nearest neighbors among OTHER pitchers'
-  training swings (standardized features, same pitch group, the other folds)
-  that are closer than the group's COMPARABLE_DISTANCE_PCT-th percentile
-  neighbor distance. StuffComparability = its mean per pitcher x pitch type
-  (usage-weighted per pitcher), and
-      StuffPlus_Final = 100 + (StuffPlus_Scaled_Reg - 100) x StuffComparability
-  so a pitch shape the model has never seen is pulled toward average.
+Inputs: the league-wide Statcast season (analysis/data_acquisition.py), data/results/stabilization.csv.
+Outputs: data/results/stuff_plus/ (league tables, validation, comparability); dashboard/data/<SEASON>/
+stuff_plus_pitch_types.csv, stuff_plus_pitches.csv.gz, movement_pitches.csv.gz, velocity_by_game.csv.
 
-v2 (ratio averaged across pitch types) is kept as StuffPlus_v2 /
-StuffPlus_Scaled_v2 and v1 (the original: both hands in one frame, swings
-only, in-sample) as StuffPlus_v1 / StuffPlus_Scaled_v1, for comparison.
-
-StuffPlus = predicted whiff probability / league average for the pitch type
-x 100 (ratio, kept for reference only -- nothing downstream uses it).
-StuffPlus_Scaled = 100 + 10 z (above). StuffPlus_Scaled_Reg regresses small
-samples toward 100 using the stabilization point k from
-analysis/stabilization.py. StuffPlus_Final is what every downstream module
-and the dashboard use.
+    python -m analysis.stuff_plus_proxy [--team PIT | --pitcher "Paul Skenes"] [--refresh]
 """
 import argparse
 import shutil
@@ -67,43 +48,40 @@ from config import (
     DEFAULT_SEASON, SEASON, MIN_PITCHES_FOR_INCLUSION, MIN_PITCHES_PER_TYPE_FOR_SCALE, MIN_PITCHES_PER_TYPE_TO_DISPLAY, MIN_PITCHES_TO_DISPLAY, SHOULDER_HEIGHT_FT,
 )
 
-# League-wide, graded vs. the qualified pool (asymmetric_upside.py and the dashboard read these)
+# League-wide tables, graded against the qualified pool (asymmetric_upside.py and the dashboard read these)
 LEAGUE_PITCHES_PATH = STUFF_PLUS_DIR / "stuff_plus_league_pitches.parquet"   # every pitch, out-of-fold score (cached, slow step)
 LEAGUE_SUMMARY_PATH = STUFF_PLUS_DIR / "stuff_plus_league_summary.parquet"   # pitcher x pitch type
 LEAGUE_PITCHER_PATH = STUFF_PLUS_DIR / "stuff_plus_league_pitcher.parquet"   # pitcher
 V1_SUMMARY_PATH = STUFF_PLUS_DIR / "stuff_plus_v1_league_summary.parquet"    # original model's scores, for StuffPlus_v1
-# v2 tables, frozen the first time v3 runs (freeze_v2), for StuffPlus_v2
+# The earlier version's (v2) tables, copied once by freeze_v2, for the StuffPlus_v2 comparison
 V2_SUMMARY_PATH = STUFF_PLUS_DIR / "stuff_plus_v2_league_summary.parquet"
 V2_PITCHER_PATH = STUFF_PLUS_DIR / "stuff_plus_v2_league_pitcher.parquet"
 VALIDATION_PATH = STUFF_PLUS_DIR / "stuff_plus_validation.csv"
 V1_COMPARISON_PATH = STUFF_PLUS_DIR / "stuff_plus_v1_comparison.csv"
 WHIFF_GAP_PATH = STUFF_PLUS_DIR / "whiff_gap.csv"
 COMPARABILITY_PATH = STUFF_PLUS_DIR / "comparability.csv"
-# This run's --pitcher/--team scope
+# Only this run's --pitcher / --team pitchers
 SUMMARY_PATH = STUFF_PLUS_DIR / "stuff_plus_summary.parquet"
 PITCHES_PATH = STUFF_PLUS_DIR / "stuff_plus_pitches.parquet"
 
 DASHBOARD_DATA = DASHBOARD_DATA_DIR   # dashboard/data/<SEASON>/
 DASHBOARD_PATH = DASHBOARD_DATA / "stuff_plus_pitch_types.csv"
-# The two per-pitch exports are gzipped: league-wide they're 30-60MB as plain CSV,
-# over the 25MB GitHub web limit (pandas reads/writes .csv.gz transparently).
+# The two per-pitch exports are gzipped: league-wide they are 30-60MB as plain CSV, over GitHub's 25MB
+# web upload limit (pandas reads and writes .csv.gz directly).
 DASHBOARD_PITCHES_PATH = DASHBOARD_DATA / "stuff_plus_pitches.csv.gz"
-# ALL pitches (not just scored swings) for the pitch movement chart -- only the columns app.py reads
+# Every pitch (not only swings) for the pitch movement chart: only the columns dashboard/pitchers.py reads
 MOVEMENT_PITCHES_PATH = DASHBOARD_DATA / "movement_pitches.csv.gz"
 MOVEMENT_COLUMNS = [
     "PitcherId", "PitchType", "release_speed", "ivb", "hb", "p_throws", "arm_angle", "ArmAngleSource",
 ]
-# Per-appearance primary fastball velocity, for the velocity-by-appearance chart
+# Average speed of his main fastball in each game, for the velocity-by-game chart
 VELOCITY_PATH = DASHBOARD_DATA / "velocity_by_game.csv"
 PRIMARY_FASTBALL_ORDER = ["FF", "SI", "FC"]
-MIN_PITCHES_FOR_PRIMARY_FASTBALL = 20   # season total; fewer and the next fastball in the order is used
+MIN_PITCHES_FOR_PRIMARY_FASTBALL = 20   # season total; with fewer, the next fastball type in the order is used
 
-# League-wide training sample: the whole season (config.START_DATE-END_DATE),
-# pulled one calendar month at a time via load_season_monthly() -- a single
-# league-wide statcast() call for 6 months OOMs in a memory-limited
-# environment during pybaseball's internal concat (confirmed: peak ~7GB+ on
-# an 8GB box); one month at a time stays bounded (~120k rows, ~3.3GB peak),
-# and RAW_TRAIN_COLUMNS drops the ~100 unused Statcast columns per month.
+# Training sample: the whole season (config.START_DATE to END_DATE), loaded one calendar month at a time
+# (load_season_monthly), because one six-month league-wide pull runs out of memory on an 8GB machine.
+# RAW_TRAIN_COLUMNS keeps only the Statcast columns this file needs.
 TRAIN_START = START_DATE
 TRAIN_END = END_DATE
 RAW_TRAIN_COLUMNS = [
@@ -111,16 +89,16 @@ RAW_TRAIN_COLUMNS = [
     "release_speed", "release_spin_rate", "release_extension",
     "spin_axis", "release_pos_z", "release_pos_x", "effective_speed",
     "pfx_z", "pfx_x", "pitch_type", "description",
-    "p_throws",   # handedness mirroring (to_rhp_frame)
-    "arm_angle",  # not a model feature -- dashboard movement chart only
+    "p_throws",   # throwing hand, for mirroring lefties (step 1)
+    "arm_angle",  # not a model input: dashboard movement chart only
 ]
-# Training columns plus what the per-team velocity chart needs, so one
-# league-wide load can grade AND be sliced into each team's scope (run_all.py).
+# Training columns plus what the velocity chart needs, so one league-wide load can both grade everyone
+# and be sliced into each team's pitchers (run_all.py).
 SCOPE_COLUMNS = RAW_TRAIN_COLUMNS + ["game_pk", "game_date"]
 
-# Model features -- same shape features the original Trackman-based script
-# used (RelSpeed, InducedVertBreak, HorzBreak, SpinRate, SpinAxis, Extension,
-# RelHeight, RelSide, EffectiveVelo), renamed to Statcast's column names.
+# Model inputs (step 2), Statcast names: speed (mph), IVB and HB (induced vertical break and horizontal break,
+# inches), spin rate (rpm), spin axis (degrees), extension (feet in front of the rubber at release), release
+# height and side (feet), effective speed (speed as the batter perceives it, mph).
 FEATURES = [
     "release_speed",
     "ivb",
@@ -133,16 +111,18 @@ FEATURES = [
     "effective_speed",
 ]
 
+# A whiff = a swing and miss; a swing = a whiff, a foul or a ball put in play
 WHIFF_DESCRIPTIONS = {"swinging_strike", "swinging_strike_blocked"}
 SWING_DESCRIPTIONS = WHIFF_DESCRIPTIONS | {"foul", "foul_tip", "hit_into_play"}
 
-MIN_PITCHES_PER_TYPE = 50      # min league swings needed to train a pitch-type model
-N_FOLDS = 5
-MIN_SAMPLE_FOR_SUMMARY_V1 = 25  # v1 only: min scored swings to keep a Pitcher/PitchType row
+MIN_PITCHES_PER_TYPE = 50      # league-wide swings a pitch type needs before it gets its own model
+N_FOLDS = 5                     # out-of-fold groups of pitchers (step 4)
+MIN_SAMPLE_FOR_SUMMARY_V1 = 25  # swings a pitch type needs: kept rows in v1, and "best pitch" in asymmetric_upside.py
 
 # ── Whiff model types (compared in analysis/stuff_plus_model_comparison.py) ──
-# Chosen by that script's rule (fixed in advance): lowest overall out-of-fold log loss on 2025, and
-# within 0.001 of the best, the simpler model (MODEL_COMPLEXITY order). Other seasons reuse the choice.
+# Chosen by that script's rule, fixed in advance: lowest out-of-fold log loss on 2025 (log loss = how far the
+# predicted whiff chances were from what happened; lower is better), and within 0.001 of the best, the simpler
+# model (MODEL_COMPLEXITY order). Other seasons reuse the choice.
 STUFF_MODEL = "B"
 MODEL_LABELS = {
     "A": "GradientBoosting per pitch type (100 trees, depth 3)",
@@ -159,19 +139,20 @@ PITCH_GROUPS = {
 SQUARED_FEATURES = ["release_speed", "ivb", "hb"]   # model B's squared terms
 HGB_GRID = [{"max_depth": d, "max_iter": n, "learning_rate": lr}
             for d in (3, 5) for n in (100, 300) for lr in (0.05, 0.1)]
-N_INNER_FOLDS = 3    # inner GroupKFold (training folds only) that tunes C / D
+N_INNER_FOLDS = 3    # inner pitcher split (training folds only) that tunes models C and D
 RANDOM_STATE = 42
 
-# Comparability (out-of-distribution shrinkage)
+# Comparability (step 8): how many of a pitch's 50 most similar other-pitcher pitches are "close"
 COMPARABLE_NEIGHBORS = 50
-COMPARABLE_DISTANCE_PCT = 95
-MAX_STUFF_FINAL = 160   # backstop: winsorize only if a qualified pitcher's overall StuffPlus_Final is outside 60-160
+COMPARABLE_DISTANCE_PCT = 95   # "close" = nearer than the 95th percentile of all neighbor distances
+MAX_STUFF_FINAL = 160   # backstop: cap extremes only if a qualified pitcher's overall StuffPlus_Final is outside 60-160
 MIN_STUFF_FINAL = 60
-WINSOR_PCT = (0.5, 99.5)
-MIN_SWINGS_FOR_WHIFF_GAP = 100
+WINSOR_PCT = (0.5, 99.5)   # the cap, as percentiles of the qualified pitchers
+MIN_SWINGS_FOR_WHIFF_GAP = 100   # diagnostic only: predicted vs. actual whiff rate
 
 
 def label_swings(df: pd.DataFrame) -> pd.DataFrame:
+    """The pitches with Whiff (1 = swing and miss) and SwingOrNot (1 = the batter swung) columns."""
     df = df.copy()
     df["Whiff"] = df["description"].isin(WHIFF_DESCRIPTIONS).astype(int)
     df["SwingOrNot"] = df["description"].isin(SWING_DESCRIPTIONS).astype(int)
@@ -179,11 +160,10 @@ def label_swings(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def to_rhp_frame(df: pd.DataFrame) -> pd.DataFrame:
-    """Mirror left-handers into the right-hander frame (model features only).
+    """Step 1: the pitches with left-handers mirrored into the right-hander's frame.
 
-    hb, release_pos_x and spin_axis are measured from the catcher's view, so
-    the same pitch shape has the opposite sign for a LHP. Used by both fit
-    and score; callers keep their own un-mirrored copy for anything saved.
+    hb, release_pos_x and spin_axis are measured from the catcher's view, so the same pitch shape has the
+    opposite sign for a left-handed pitcher (LHP). Callers keep their own unmirrored copy for anything saved.
     spin_axis: 360 - axis, taken mod 360 so an axis of 0 stays 0.
     """
     df = df.copy()
@@ -195,11 +175,11 @@ def to_rhp_frame(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def new_model() -> GradientBoostingClassifier:
-    """Model A (and v1)."""
+    """A gradient-boosted classifier: model A, and the v1 model."""
     return GradientBoostingClassifier(n_estimators=100, max_depth=3, random_state=RANDOM_STATE)
 
 
-# ── Whiff models: shared by the production fit and the model comparison ─────
+# ── Whiff models: shared by the real fit and the model comparison ──────────
 
 def pitch_group(pitch_type: str) -> str:
     """PITCH_GROUPS name for a pitch type (a type in no group is its own group)."""
@@ -207,13 +187,11 @@ def pitch_group(pitch_type: str) -> str:
 
 
 def prepare_frame(df: pd.DataFrame) -> pd.DataFrame:
-    """Labeled, complete-feature pitches with mirrored model features (X_<feature>), Fold and PitchGroup.
+    """Labeled pitches with every input, plus mirrored inputs (X_<feature>), Fold and PitchGroup.
 
-    Fold: one GroupKFold(N_FOLDS) split by pitcher over the whole season, so
-    every model type (per pitch type or per group) and the comparability
-    check hold out exactly the same pitchers. Eligible = the pitch type has
-    MIN_PITCHES_PER_TYPE+ league swings and N_FOLDS+ pitchers (same rule for
-    every model type, so they're compared on the same pitches).
+    Fold: one split of the pitchers into N_FOLDS groups (GroupKFold) for the whole season, so every model type
+    and the comparability check hold out exactly the same pitchers. Eligible = the pitch type has
+    MIN_PITCHES_PER_TYPE+ league swings and N_FOLDS+ pitchers (the same rule for every model type).
     """
     df = label_swings(df).dropna(subset=FEATURES + ["pitch_type", "p_throws"]).reset_index(drop=True)
     mirrored = to_rhp_frame(df)
@@ -235,7 +213,7 @@ X_COLUMNS = [f"X_{f}" for f in FEATURES]
 
 
 def design_matrix(rows: pd.DataFrame, model_key: str, type_codes: dict | None = None) -> np.ndarray:
-    """Model inputs: the mirrored features; B adds squared velocity / IVB / HB; D adds the pitch type code."""
+    """Model inputs: the mirrored traits; B adds squared speed, IVB and HB; D adds the pitch type code."""
     X = rows[X_COLUMNS].to_numpy(dtype=float)
     if model_key == "B":
         X = np.column_stack([X, rows[[f"X_{f}" for f in SQUARED_FEATURES]].to_numpy(dtype=float) ** 2])
@@ -245,6 +223,7 @@ def design_matrix(rows: pd.DataFrame, model_key: str, type_codes: dict | None = 
 
 
 def make_model(model_key: str, params: dict | None = None):
+    """An unfitted whiff model of type A, B, C or D (B = scale the inputs, then logistic regression: step 2-3)."""
     if model_key == "A":
         return new_model()
     if model_key == "B":
@@ -265,7 +244,7 @@ class ConstantModel:
 
 
 def tune_hgb(X: np.ndarray, y: np.ndarray, groups: np.ndarray, model_key: str) -> dict:
-    """HGB_GRID point with the lowest inner-CV log loss (GroupKFold by pitcher, training rows only)."""
+    """The HGB_GRID settings with the lowest log loss on held-out training pitchers (inner GroupKFold)."""
     best, best_loss = None, np.inf
     splits = list(GroupKFold(n_splits=N_INNER_FOLDS).split(X, groups=groups))
     for params in HGB_GRID:
@@ -288,12 +267,11 @@ def fit_unit(X: np.ndarray, y: np.ndarray, groups: np.ndarray, model_key: str):
 
 
 def oof_predict(df: pd.DataFrame, model_key: str, verbose: bool = True) -> tuple[pd.Series, pd.Series, list[dict]]:
-    """Out-of-fold P(whiff | swing) for every eligible pitch (swing or not), the constant-rate baseline, tuning log.
+    """Step 4: out-of-fold P(whiff | swing) for every eligible pitch, the constant-rate baseline, and a tuning log.
 
-    A-C: one model per pitch type; D: one model per PITCH_GROUPS group with
-    the pitch type as a categorical feature. Each fold's model is trained on
-    the OTHER folds' swings only. Baseline = the training folds' whiff rate
-    for that pitch type (a constant per type).
+    A-C: one model per pitch type; D: one model per PITCH_GROUPS group. Each fold's model is trained on the
+    OTHER folds' swings only, then scores every pitch (swung at or not) in its own fold. Baseline = the
+    training folds' plain whiff rate for that pitch type, for comparison.
     """
     pred = pd.Series(np.nan, index=df.index)
     baseline = pd.Series(np.nan, index=df.index)
@@ -323,7 +301,7 @@ def oof_predict(df: pd.DataFrame, model_key: str, verbose: bool = True) -> tuple
 
 
 def validation_table(df: pd.DataFrame, pred: pd.Series, baseline: pd.Series) -> pd.DataFrame:
-    """Out-of-fold metrics on held-out swings, by pitch type plus an 'ALL' row (swing-weighted mean of the types)."""
+    """Out-of-fold accuracy on held-out swings (AUC, log loss, Brier), by pitch type plus a swing-weighted 'ALL' row."""
     swings = df[(df["SwingOrNot"] == 1) & pred.notna()]
     rows = []
     for pitch_type, g in swings.groupby("pitch_type"):
@@ -357,13 +335,11 @@ def calibration_bins(df: pd.DataFrame, pred: pd.Series, n_bins: int = 10) -> pd.
 
 
 def comparable_share(df: pd.DataFrame) -> pd.Series:
-    """Per eligible pitch: share of its COMPARABLE_NEIGHBORS nearest OTHER-pitcher training swings that are close.
+    """Step 8 input: per pitch, the share of its COMPARABLE_NEIGHBORS most similar other-pitcher swings that are close.
 
-    Within each pitch group, features standardized on the group's swings.
-    The reference set for a pitch in fold k is the group's swings in the
-    other folds -- exactly the pitches that trained the model that scored
-    it, and never the pitcher's own. "Close" = nearer than the group's
-    COMPARABLE_DISTANCE_PCT-th percentile of every neighbor distance.
+    Within each pitch group, with the traits scaled on the group's swings. The pitches compared against are the
+    swings in the other folds: exactly the pitches that trained the model that scored it, never his own.
+    "Close" = nearer than the group's COMPARABLE_DISTANCE_PCT-th percentile of every neighbor distance.
     """
     share = pd.Series(np.nan, index=df.index)
     for group, rows in df[df["Eligible"]].groupby("PitchGroup"):
@@ -385,13 +361,13 @@ def comparable_share(df: pd.DataFrame) -> pd.Series:
     return share
 
 
-# ── v3: out-of-fold, every pitch, handedness-mirrored, STUFF_MODEL ──────────
+# ── Steps 1-4: out-of-fold whiff chance for every pitch ─────────────────────
 
 def fit_and_score_oof(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Out-of-fold PredWhiffProb (STUFF_MODEL) and ComparableShare for every eligible pitch, plus validation.
+    """Out-of-fold PredWhiffProb (STUFF_MODEL) and ComparableShare for every eligible pitch, plus the validation table.
 
-    StuffPlus ratio = 100 x p / the league's average p over every pitch of
-    that type (of that group for model D, whose baseline is the group).
+    StuffPlus (a ratio, input to step 5) = 100 x p / the league's average p for that pitch type (pitch group for
+    model D).
     """
     df = prepare_frame(df)
     pred, baseline, _ = oof_predict(df, STUFF_MODEL)
@@ -408,7 +384,7 @@ def fit_and_score_oof(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
 def build_league_scores(train_df: pd.DataFrame | None = None, force_refresh: bool = False) -> pd.DataFrame:
     """Every league pitch with its out-of-fold Stuff+, cached (the slow step). Writes the validation table."""
     if LEAGUE_PITCHES_PATH.exists() and not force_refresh:
-        # pitchers_only: the cache may predate the position filter
+        # pitchers_only drops position players, in case the cache was saved before that filter existed
         return pitchers_only(pd.read_parquet(LEAGUE_PITCHES_PATH), "PitcherId")
 
     if train_df is None:
@@ -440,7 +416,7 @@ def print_validation(validation: pd.DataFrame):
 
 
 def summarize_stuff_plus(per_pitch: pd.DataFrame) -> pd.DataFrame:
-    """Collapse scored pitches to one row per Pitcher x PitcherTeam x PitchType (no minimum -- see add_regressed)."""
+    """One row per pitcher x team x pitch type: average StuffPlus ratio, pitches, swings, comparability (no minimum)."""
     return (
         per_pitch.groupby(["Pitcher", "PitcherId", "PitcherTeam", "PitchType"])
         .agg(StuffPlus=("StuffPlus", "mean"), Pitches=("StuffPlus", "size"), Swings=("Swing", "sum"),
@@ -452,7 +428,7 @@ def summarize_stuff_plus(per_pitch: pd.DataFrame) -> pd.DataFrame:
 
 
 def pitcher_level_stuff_plus(summary: pd.DataFrame) -> pd.DataFrame:
-    """Collapse the PitchType-level summary to one pitch-count-weighted Stuff+ per pitcher."""
+    """One row per pitcher: his pitch-count-weighted average StuffPlus ratio."""
     weighted = summary.assign(Weighted=summary["StuffPlus"] * summary["Pitches"])
     agg = {"WeightedSum": ("Weighted", "sum"), "Pitches": ("Pitches", "sum")}
     if "Swings" in summary:
@@ -463,12 +439,10 @@ def pitcher_level_stuff_plus(summary: pd.DataFrame) -> pd.DataFrame:
 
 
 def league_scale_pool(league_df: pd.DataFrame, league_summary: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """The league-wide qualified pool StuffPlus_Scaled is graded against.
+    """(pitcher pool, pitcher x pitch type pool) of StuffPlus ratios that grades are scaled against.
 
-    Returns (pitcher pool, pitcher x pitch type pool) of ratio StuffPlus values:
-    pitchers with MIN_PITCHES_FOR_INCLUSION pitches thrown, and pitcher x pitch
-    type rows with MIN_PITCHES_PER_TYPE_FOR_SCALE pitches of that type thrown.
-    One row per PitcherId (traded pitchers aren't split by team).
+    Pitchers with MIN_PITCHES_FOR_INCLUSION pitches thrown, and pitcher x pitch type rows with
+    MIN_PITCHES_PER_TYPE_FOR_SCALE pitches of that type. One row per pitcher (traded pitchers aren't split by team).
     """
     thrown = league_df.groupby("pitcher").size()
     thrown_by_type = league_df.groupby(["pitcher", "pitch_type"]).size()
@@ -488,10 +462,9 @@ def league_scale_pool(league_df: pd.DataFrame, league_summary: pd.DataFrame) -> 
 
 
 def add_scaled_stuff_plus(summary: pd.DataFrame, pitcher_level: pd.DataFrame, pitcher_pool: pd.DataFrame, type_pool: pd.DataFrame):
-    """ADD StuffPlus_Scaled = 100 + 10 * z(StuffPlus), z vs. the league-wide qualified pool.
+    """The tables with StuffPlus_Scaled = 100 + 10 x z(ratio) added (the v1 comparison's grading).
 
-    The ratio StuffPlus column is left exactly as it is. Pitch-type rows are
-    z-scored within their own pitch type. Same scale as Location+.
+    Pitch-type rows are z-scored within their own pitch type; the ratio column is left as it is.
     """
     summary = summary.copy()
     summary["StuffPlus_Scaled"] = float("nan")
@@ -505,15 +478,13 @@ def add_scaled_stuff_plus(summary: pd.DataFrame, pitcher_level: pd.DataFrame, pi
 
 
 def add_scaled_from_z(summary: pd.DataFrame, pitcher_level: pd.DataFrame, type_pool: pd.DataFrame, qualified_ids) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """v3 StuffPlus_Scaled from z-scores (the ratio StuffPlus columns are kept, for reference only).
+    """Steps 5-6: the tables with StuffZ, StuffPlus_Scaled and the pitcher's StuffComparability added.
 
-    Pitcher x pitch type: StuffZ = z of the ratio within that pitch type
-    (vs. type_pool, rows with MIN_PITCHES_PER_TYPE_FOR_SCALE+ pitches of the
-    type), StuffPlus_Scaled = 100 + 10 StuffZ. Pitcher: StuffZ = his
-    pitch-count-weighted average of his per-type StuffZ (types with no pool
-    are left out), StuffPlus_Scaled = 100 + 10 z(StuffZ) vs. the qualified
-    pitchers. StuffComparability: per type, the mean ComparableShare; per
-    pitcher, its pitch-count-weighted average over the same types as StuffZ.
+    Pitch type (step 5): StuffZ = z of the ratio within that pitch type, against rows with
+    MIN_PITCHES_PER_TYPE_FOR_SCALE+ pitches of the type; StuffPlus_Scaled = 100 + 10 x StuffZ.
+    Pitcher (step 6): StuffZ = his pitch-count-weighted average of his per-type StuffZ, then
+    StuffPlus_Scaled = 100 + 10 x z(StuffZ) against the qualified pitchers. Averaging z-scores rather than
+    ratios keeps one extreme pitch type from dominating.
     """
     summary = summary.copy()
     summary["StuffZ"] = np.nan
@@ -535,11 +506,11 @@ def add_scaled_from_z(summary: pd.DataFrame, pitcher_level: pd.DataFrame, type_p
 
 
 def add_final(summary: pd.DataFrame, pitcher_level: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """StuffPlus_Final = 100 + (StuffPlus_Scaled_Reg - 100) x StuffComparability, after the small-sample regression.
+    """Step 8: the tables with StuffPlus_Final = 100 + (StuffPlus_Scaled_Reg - 100) x StuffComparability added.
 
-    Backstop: only if a qualified pitcher's overall StuffPlus_Final is above
-    MAX_STUFF_FINAL or below MIN_STUFF_FINAL, every pitcher's overall value is
-    winsorized at the qualified pool's WINSOR_PCT percentiles (StuffCapped).
+    Backstop: only if a qualified pitcher's overall StuffPlus_Final is above MAX_STUFF_FINAL or below
+    MIN_STUFF_FINAL, every pitcher's overall value is capped at the qualified pool's WINSOR_PCT percentiles
+    (StuffCapped = True).
     """
     summary, pitcher_level = summary.copy(), pitcher_level.copy()
     for table in (summary, pitcher_level):
@@ -566,13 +537,11 @@ def add_final(summary: pd.DataFrame, pitcher_level: pd.DataFrame) -> tuple[pd.Da
 
 
 def add_regressed(summary: pd.DataFrame, pitcher_level: pd.DataFrame, thrown: pd.Series):
-    """StuffPlus_Scaled_Reg / StuffPlus_Reliability, regressed toward 100 (the qualified pool's mean).
+    """Step 7: the tables with StuffPlus_Scaled_Reg = (n x StuffPlus_Scaled + k x 100) / (n + k) and its reliability.
 
-    n = scored pitches (per pitch type, or overall); k from data/stabilization.csv
-    (per pitch type, falling back to the overall k for a type with none).
-    Blank (NaN) for pitchers under config.MIN_PITCHES_TO_DISPLAY pitches thrown
-    and pitch types under config.MIN_PITCHES_PER_TYPE_TO_DISPLAY -- the raw
-    columns are always kept as they are.
+    n = scored pitches (of that pitch type, or overall); k from data/results/stabilization.csv (per pitch type,
+    falling back to the overall k for a type with none). Blank for pitchers under config.MIN_PITCHES_TO_DISPLAY
+    pitches and pitch types under config.MIN_PITCHES_PER_TYPE_TO_DISPLAY; the unadjusted columns are kept.
     """
     summary = summary.copy()
     k = summary["PitchType"].map(lambda p: load_k(f"StuffPlus_Scaled[{p}]", fallback="StuffPlus_Scaled"))
@@ -591,10 +560,10 @@ def add_regressed(summary: pd.DataFrame, pitcher_level: pd.DataFrame, thrown: pd
     return summary, pitcher_level
 
 
-# ── v1: the original model, kept only for StuffPlus_v1 ──────────────────────
+# ── v1 (the first version), kept only for the StuffPlus_v1 comparison ──────
 
 def fit_stuff_plus_models_v1(df: pd.DataFrame) -> dict:
-    """v1: one model per pitch type on all swings, both hands in the catcher's frame. {type: (model, scaler, baseline)}."""
+    """{pitch type: (model, scaler, baseline)}: v1's in-sample model per pitch type, both hands unmirrored."""
     df = label_swings(df)
     swings = df[df["SwingOrNot"] == 1].dropna(subset=FEATURES + ["Whiff", "pitch_type"]).copy()
     models = {}
@@ -609,7 +578,7 @@ def fit_stuff_plus_models_v1(df: pd.DataFrame) -> dict:
 
 
 def score_stuff_plus_v1(df: pd.DataFrame, models: dict) -> pd.DataFrame:
-    """v1: score only the swings, in-sample."""
+    """v1's StuffPlus ratio for every swing (in sample)."""
     df = label_swings(df)
     swings = df[df["SwingOrNot"] == 1].dropna(subset=FEATURES + ["Whiff", "pitch_type", "Pitcher"])
     results = []
@@ -643,7 +612,7 @@ def league_v1_summary(train_df: pd.DataFrame, force_refresh: bool = False) -> pd
 
 
 def v1_tables(train_df: pd.DataFrame, force_refresh: bool = False) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """(pitcher x type, pitcher) v1 StuffPlus_v1 / StuffPlus_Scaled_v1, graded exactly as before."""
+    """(pitcher x type, pitcher) tables of StuffPlus_v1 / StuffPlus_Scaled_v1, graded the way v1 was."""
     summary = league_v1_summary(train_df, force_refresh)
     pitcher_pool, type_pool = league_scale_pool(train_df, summary)
     summary, pitcher = add_scaled_stuff_plus(summary, pitcher_level_stuff_plus(summary), pitcher_pool, type_pool)
@@ -655,7 +624,7 @@ def v1_tables(train_df: pd.DataFrame, force_refresh: bool = False) -> tuple[pd.D
 # ── League grading ───────────────────────────────────────────────────────────
 
 def freeze_v2():
-    """Copy the v2 league tables (ratio averaged across pitch types) to V2_*_PATH once, before v3 overwrites them."""
+    """Copy the v2 league tables to V2_*_PATH once, before the current model overwrites them (no-op afterwards)."""
     if V2_PITCHER_PATH.exists() or not LEAGUE_PITCHER_PATH.exists():
         return
     if "StuffPlus_Final" in pd.read_parquet(LEAGUE_PITCHER_PATH).columns:
@@ -669,7 +638,7 @@ def freeze_v2():
 def v2_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
     """(pitcher x type, pitcher) StuffPlus_v2 / StuffPlus_Scaled_v2 from the frozen v2 tables (blank if none)."""
     rename = {"StuffPlus": "StuffPlus_v2", "StuffPlus_Scaled": "StuffPlus_Scaled_v2"}
-    if not V2_PITCHER_PATH.exists():   # e.g. 2026: v2 was never run for it; numeric blanks, not object columns
+    if not V2_PITCHER_PATH.exists():   # e.g. 2026: v2 never ran for it; empty numeric columns
         blank = {c: pd.Series(dtype=float) for c in rename.values()}
         return (pd.DataFrame({"PitcherId": pd.Series(dtype="int64"), "PitchType": pd.Series(dtype=object), **blank}),
                 pd.DataFrame({"PitcherId": pd.Series(dtype="int64"), **blank}))
@@ -680,12 +649,11 @@ def v2_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def grade_league(force_refresh: bool = False, train_df: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """League-wide (pitcher x pitch type, pitcher) Stuff+ tables, saved; plus the training frame.
+    """(pitcher x pitch type, pitcher, training pitches): the league-wide Stuff+ tables, also saved.
 
-    One row per PitcherId (traded pitchers labeled with their primary team).
-    Pass `train_df` (load_season_monthly with at least RAW_TRAIN_COLUMNS) to
-    reuse a frame that's already loaded. --refresh refits the v3 model only
-    (v1 is a fixed, cached comparison; v2 is frozen).
+    One row per pitcher (a traded pitcher is labeled with the team he threw most for). Pass `train_df`
+    (load_season_monthly with at least RAW_TRAIN_COLUMNS) to reuse a frame already in memory.
+    force_refresh refits the current model only; the v1 / v2 comparison tables stay as cached.
     """
     freeze_v2()
     if train_df is None:
@@ -693,12 +661,16 @@ def grade_league(force_refresh: bool = False, train_df: pd.DataFrame | None = No
         train_df = load_season_monthly(TRAIN_START, TRAIN_END, columns=RAW_TRAIN_COLUMNS)
     print(f"Loaded {len(train_df)} cleaned training pitches")
 
+    # 1-4. Mirror lefties, scale the traits, train the swing model and score every pitch out of fold
     league_pitches = build_league_scores(train_df, force_refresh=force_refresh)
     summary = summarize_stuff_plus(league_pitches)
+    # 5-6. Grade each pitch type within its type, then combine his pitch types on the 100 + 10 x z scale
     pitcher_pool, type_pool = league_scale_pool(train_df, summary)
     summary, pitcher = add_scaled_from_z(summary, pitcher_level_stuff_plus(summary), type_pool, pitcher_pool["PitcherId"])
+    # 7. Small samples: pull toward 100 by sample size
     thrown = train_df.groupby("pitcher").size()
     summary, pitcher = add_regressed(summary, pitcher, thrown)
+    # 8. Unusual pitches: pull toward 100 by comparability
     summary, pitcher = add_final(summary, pitcher)
 
     if SEASON == DEFAULT_SEASON:
@@ -723,7 +695,7 @@ def grade_league(force_refresh: bool = False, train_df: pd.DataFrame | None = No
 
 
 def print_diagnostics(summary: pd.DataFrame, league_pitches: pd.DataFrame):
-    """Lowest-comparability pitch types and the predicted vs. actual whiff gap (diagnostic only: scores unchanged)."""
+    """Print and save the least comparable pitch types and the predicted vs. actual whiff gap (diagnostics only)."""
     rows = summary[summary["Pitches"] >= MIN_PITCHES_PER_TYPE_FOR_SCALE].sort_values("StuffComparability")
     rows[["Pitcher", "PitcherId", "PitcherTeam", "PitchType", "Pitches", "StuffComparability", "StuffPlus",
           "StuffPlus_Scaled", "StuffPlus_Scaled_Reg", "StuffPlus_Final"]].to_csv(COMPARABILITY_PATH, index=False)
@@ -748,7 +720,7 @@ def print_diagnostics(summary: pd.DataFrame, league_pitches: pd.DataFrame):
 
 
 def compare_versions(pitcher: pd.DataFrame) -> pd.DataFrame:
-    """v1 and v2 vs. v3 (StuffPlus_Final) for qualified pitchers: correlations and the 10 biggest movers vs. v2."""
+    """Qualified pitchers' v1 / v2 grades next to the current StuffPlus_Final: correlations and the 10 biggest changes."""
     q = pitcher[pitcher["Qualified"]].copy()
     print("\n── Stuff+ v1 / v2 vs. v3 (qualified pitchers; v3 = StuffPlus_Final) ──")
     for old in ["v1", "v2"]:
@@ -775,12 +747,10 @@ def compare_versions(pitcher: pd.DataFrame) -> pd.DataFrame:
 # ── Dashboard exports ────────────────────────────────────────────────────────
 
 def save_for_dashboard(summary: pd.DataFrame, pitcher_level: pd.DataFrame):
-    """Upsert this run's per-pitch-type Stuff+ rows (plus each pitcher's overall) into the dashboard's CSV.
+    """Write this run's per-pitch-type Stuff+ rows (plus each pitcher's overall grade) into the dashboard CSV.
 
-    Graded against the league-wide qualified pool, so 100 is a league
-    average, not this subset's own. Upserted by PitcherId x PitcherTeam, so a
-    traded pitcher keeps a row under each team he was run for, and re-running
-    a team replaces just that team's rows for those pitchers.
+    Grades are league-wide, so 100 is the league average, not this team's. Rows are replaced by
+    PitcherId x PitcherTeam ("upsert"), so a traded pitcher keeps a row under each team he was run for.
     """
     overall = pitcher_level[[
         "PitcherId", "PitchesThrown", "Pitches", "Swings", "StuffPlus", "StuffPlus_Scaled", "StuffPlus_Scaled_Reg",
@@ -799,7 +769,7 @@ def save_for_dashboard(summary: pd.DataFrame, pitcher_level: pd.DataFrame):
 
 
 def upsert_csv(rows: pd.DataFrame, path: Path, keys: list[str] | None = None):
-    """Replace this run's `keys` (default PitcherId) in `path`, keep everyone else."""
+    """Write `rows` into the CSV at `path`, replacing earlier rows with the same `keys` (default PitcherId)."""
     keys = keys or ["PitcherId"]
     if not WRITES_DASHBOARD and DASHBOARD_DATA in path.parents:
         print(f"Not writing {path.name}: this season has no dashboard (run_all --season {SEASON} --dashboard)")
@@ -816,7 +786,7 @@ def upsert_csv(rows: pd.DataFrame, path: Path, keys: list[str] | None = None):
 
 
 def purge_non_pitchers_from_dashboard():
-    """Drop position players' rows (left by older runs) from every upserted dashboard CSV."""
+    """Remove position players' rows (left by older runs) from every dashboard CSV this file writes."""
     for path in [DASHBOARD_PATH, DASHBOARD_PITCHES_PATH, MOVEMENT_PITCHES_PATH, VELOCITY_PATH]:
         if path.exists():
             rows = pd.read_csv(path)
@@ -827,27 +797,25 @@ def purge_non_pitchers_from_dashboard():
 
 
 def save_pitches_for_dashboard(per_pitch: pd.DataFrame):
-    """Upsert this run's scored pitches (per-pitch StuffPlus)."""
+    """Write this run's scored pitches (each pitch's StuffPlus ratio) into the dashboard CSV."""
     rows = per_pitch[["Pitcher", "PitcherId", "PitcherTeam", "PitchType", "release_speed", "ivb", "hb", "StuffPlus"]]
     upsert_csv(rows.round({"ivb": 2, "hb": 2, "StuffPlus": 1}), DASHBOARD_PITCHES_PATH)
 
 
 def estimate_arm_angle(df: pd.DataFrame) -> pd.Series:
-    """APPROXIMATE arm angle (degrees above horizontal) from release point.
+    """Approximate arm angle per pitch (degrees above horizontal) from the release point.
 
-    degrees(atan2(release height - SHOULDER_HEIGHT_FT, |release side|)). Only
-    used when Statcast has no arm_angle for a pitcher at all.
+    degrees(atan2(release height - SHOULDER_HEIGHT_FT, |release side|)); used only when Statcast has no
+    arm_angle for a pitcher at all.
     """
     return np.degrees(np.arctan2(df["release_pos_z"] - SHOULDER_HEIGHT_FT, df["release_pos_x"].abs()))
 
 
 def save_movement_for_dashboard(scope_df: pd.DataFrame):
-    """Upsert every pitch (not just swings) for this run's pitchers, for the movement chart.
+    """Write every pitch (not only swings) of this run's pitchers into the movement chart's CSV.
 
-    arm_angle is Statcast's when the pitcher has any (ArmAngleSource =
-    "Statcast"; the odd null pitch stays null); a pitcher with none at all
-    gets the release-point estimate on every pitch ("release-point estimate").
-    Raw catcher's-view hb/release_pos_x -- the chart does its own arm-side flip.
+    arm_angle is Statcast's when the pitcher has any (ArmAngleSource = "Statcast"); a pitcher with none gets
+    the release-point estimate on every pitch. hb stays in the catcher's view: the chart flips it itself.
     """
     rows = scope_df.rename(columns={"pitcher": "PitcherId", "pitch_type": "PitchType"}).copy()
     if "arm_angle" not in rows:
@@ -860,7 +828,8 @@ def save_movement_for_dashboard(scope_df: pd.DataFrame):
 
 
 def primary_fastball(pitch_types: pd.Series) -> str | None:
-    """FF, else SI, else FC -- the first with MIN_PITCHES_FOR_PRIMARY_FASTBALL pitches; else the most-thrown of the three."""
+    """His main fastball: FF (four-seam), else SI (sinker), else FC (cutter), the first with
+    MIN_PITCHES_FOR_PRIMARY_FASTBALL pitches; otherwise the most thrown of the three (None if he throws none)."""
     counts = pitch_types.value_counts()
     for pitch_type in PRIMARY_FASTBALL_ORDER:
         if counts.get(pitch_type, 0) >= MIN_PITCHES_FOR_PRIMARY_FASTBALL:
@@ -870,7 +839,7 @@ def primary_fastball(pitch_types: pd.Series) -> str | None:
 
 
 def save_velocity_for_dashboard(scope_df: pd.DataFrame):
-    """Upsert one row per pitcher x appearance: primary fastball's average velocity, pitches thrown, opponent."""
+    """Write one row per pitcher x game: his main fastball's average speed, pitches thrown, opponent."""
     rows = []
     for pitcher_id, pitches in scope_df.groupby("pitcher"):
         fastball = primary_fastball(pitches["pitch_type"])
@@ -895,6 +864,7 @@ def save_velocity_for_dashboard(scope_df: pd.DataFrame):
 
 
 def run(start_date: str, end_date: str, pitcher: str | None = None, team: str | None = None, force_refresh: bool = False):
+    """Grade the league, print the version comparison, then print and export one pitcher or team if asked."""
     if pitcher and team:
         raise ValueError("Pass --pitcher or --team, not both")
 
@@ -909,8 +879,7 @@ def run(start_date: str, end_date: str, pitcher: str | None = None, team: str | 
               .drop(columns="PitcherId").to_string(index=False))
         return
 
-    # Grades are league-wide and out-of-fold; the scope pull decides WHO is shown
-    # and feeds the movement / velocity charts.
+    # Grades are league-wide; this pull only decides who is shown, and feeds the movement and velocity charts
     del train_df
     if pitcher:
         print(f"\nPulling {pitcher}'s Statcast data {start_date} to {end_date}...")
@@ -926,11 +895,10 @@ def run(start_date: str, end_date: str, pitcher: str | None = None, team: str | 
 
 def export_scope(summary: pd.DataFrame, pitcher_level: pd.DataFrame, scope_df: pd.DataFrame, label: str, title: str,
                  league_pitches: pd.DataFrame | None = None):
-    """Print the scope's staff (graded vs. league) and upsert its rows into every dashboard CSV.
+    """Print one team's (or pitcher's) Stuff+ grades and write their rows into every dashboard CSV.
 
-    scope_df = every pitch the scope's pitchers threw (cleaned Statcast);
-    label = the PitcherTeam written for them. league_pitches defaults to
-    the cached LEAGUE_PITCHES_PATH (pass it in to avoid re-reading it per team).
+    scope_df = every pitch those pitchers threw; label = the PitcherTeam written for them. league_pitches
+    defaults to the cached LEAGUE_PITCHES_PATH (pass it in to avoid re-reading it for every team).
     """
     print(f"Loaded {len(scope_df)} cleaned pitches")
     ids = scope_df["pitcher"].unique()

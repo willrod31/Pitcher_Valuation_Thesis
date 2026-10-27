@@ -1,4 +1,10 @@
-"""Shared helpers used across the analysis modules."""
+"""
+Shared folders and small math helpers used by every analysis file.
+
+It defines where each season's data and results live (and creates those folders on import), plus the
+z-score, percentile and "100 + 10 x z" scaling helpers. A z-score says how many standard deviations (typical
+steps) a value is from the average. Imported by the other files; not run on its own.
+"""
 import os
 from pathlib import Path
 
@@ -8,7 +14,7 @@ import pandas as pd
 from config import DEFAULT_SEASON, SEASON
 
 # data/ layout (see data/README.md):
-#   data/                       files you edit or read: salaries_<YYYY>.csv, missing_contract_report.csv
+#   data/                       files you edit or read: salaries_<YYYY>.csv, missing_contract_report*.csv
 #   data/raw/statcast/          cached Statcast pulls (league months, teams, single pitchers)
 #   data/raw/mlb_api/           cached MLB Stats API responses (debut dates, transactions, game logs)
 #   data/results/               each analysis module's output tables for config.DEFAULT_SEASON (2025)
@@ -32,10 +38,10 @@ def season_results_dir(season: int) -> Path:
 RESULTS_DIR = season_results_dir(SEASON)
 WAR_CALIBRATION_DIR = BASE_RESULTS_DIR / "war_calibration"
 SEASON_STATS_DIR = MLB_API_DIR / "season_stats"
-# dashboard/data/<SEASON>/: each dashboard season's exports (same file names every season).
+# dashboard/data/<SEASON>/: each dashboard season's exports (the same file names every season).
 # DEFAULT_SEASON always writes there; another season only with THESIS_DASHBOARD=1
-# (python -m analysis.run_all --season 2026 --dashboard). League-only seasons (2023, 2024) write only the
-# team-level team_records.csv / team_staff.csv there (team_records.py, export_report_data.export_team_staff).
+# (python -m analysis.run_all --season 2026 --dashboard). Without it, a season writes only the two
+# team-level files (team_records.csv, team_staff.csv) there.
 DASHBOARD_ROOT = Path(__file__).resolve().parent.parent / "dashboard" / "data"
 DASHBOARD_DATA_DIR = DASHBOARD_ROOT / str(SEASON)
 WRITES_DASHBOARD = SEASON == DEFAULT_SEASON or os.environ.get("THESIS_DASHBOARD") == "1"
@@ -47,7 +53,7 @@ for _d in (STATCAST_LEAGUE_DIR, STATCAST_TEAM_DIR, STATCAST_PITCHER_DIR, TRANSAC
 
 
 def zscore(series: pd.Series) -> pd.Series:
-    """Standardize a series to mean 0, std 1. Constant series map to all-0."""
+    """The series as z-scores against itself (average 0, standard deviation 1); all 0 if it doesn't vary."""
     std = series.std()
     if not std:
         return series * 0
@@ -55,16 +61,15 @@ def zscore(series: pd.Series) -> pd.Series:
 
 
 def percentile_rank(series: pd.Series) -> pd.Series:
-    """Rank a series to [0, 100], higher value = higher percentile."""
+    """Each value's percentile rank, 0 to 100 (higher value = higher percentile)."""
     return series.rank(pct=True) * 100
 
 
 def scale_100(values: pd.Series, pool: pd.Series | None = None) -> pd.Series:
-    """100 + 10 * z, with the mean/SD taken from `pool` (default: `values` itself).
+    """100 + 10 x z, with the average and standard deviation (SD) taken from `pool` (default: `values` itself).
 
-    Puts a metric on the Stuff+/Location+ scale: 100 = pool average, 10 points
-    = 1 standard deviation. Pass the league-wide qualified pool as `pool` so
-    a subset (one team) is still graded against the league.
+    The Stuff+ / Location+ scale: 100 = the pool's average, 10 points = 1 SD. Pass the league-wide qualified pool
+    as `pool` so a subset (one team) is still graded against the league.
     """
     pool = values if pool is None else pool
     std = pool.std()
@@ -74,7 +79,7 @@ def scale_100(values: pd.Series, pool: pd.Series | None = None) -> pd.Series:
 
 
 def zscore_vs(values: pd.Series, pool: pd.Series) -> pd.Series:
-    """z of `values` using `pool`'s mean and SD (e.g. the qualified pool), so small samples don't move the scale."""
+    """z-scores of `values` using `pool`'s average and SD (e.g. the qualified pool), so small samples don't move the scale."""
     std = pool.std()
     if not std:
         return values * 0

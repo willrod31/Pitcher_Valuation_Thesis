@@ -1,88 +1,27 @@
 """
-Hand-off point between the full analysis pipeline and the dashboard.
+The dashboard's data files: every analysis result joined into one table per season, plus the team staff table.
 
-Joins stuff_plus_proxy.py, asymmetric_upside.py, volatility_discount.py, and
-risk_adjusted_value.py output into one flat CSV with a fixed column
-contract, for the eventual multi-pitcher League Mispricing Board.
+In simple terms: this is the hand-off from the analysis to the dashboard. It gathers each pitcher's grades, risk,
+projected WAR and contract value into one row, and averages each team's whole pitching staff.
 
-Written league-wide (every graded pitcher, keyed on PitcherId); the
-dashboard joins it to its own Stuff+ rows on PitcherId and filters by team.
-Also copies data/surplus_by_year.csv and data/injury_stints.csv next to it
-for the per-pitcher charts.
+How it works:
+    1. Join risk_adjusted_value.py's league table into pitcher_report_data.csv: one row per pitcher with both the
+       unadjusted and small-sample ("_Reg") values, each metric's sample size, and Reliability = n / (n + k).
+       Money columns are in $ millions (_M). Past seasons also get what actually happened the next season.
+    2. Copy the per-pitcher extras next to it (surplus by year, IL stints, what each team paid a traded pitcher).
+    3. Dashboard minimum: drop pitchers with fewer than config.MIN_PITCHES_DASHBOARD pitches that season (all
+       teams combined) from every dashboard file, and list any pitcher above it whose grades are all blank.
+    4. Team staff averages (team_staff.csv): weight each pitcher by the pitches he threw FOR THAT TEAM, so a
+       traded pitcher counts only for his time there; FIP-WAR is split by his innings for each team.
+       Team Stuff+ = sum(pitches x Stuff+) / sum(pitches), the same for every metric, plus 1-30 ranks.
+    5. Past seasons only: copy the model files the Home page shows and shrink the per-pitch files.
+Nothing in data/results/ and no league average or grading pool is changed.
 
-Raw and regressed (*_Reg) values are both exported, with each metric's
-sample size and Reliability = n / (n + k). Qualified marks the league pool
-(config.MIN_PITCHES_FOR_INCLUSION pitches) the dashboard takes league
-means / SDs / percentiles from.
+Inputs: data/results/ tables for config.SEASON, data/salaries_<SEASON>.csv, the raw league Statcast months.
+Outputs: dashboard/data/<SEASON>/ (pitcher_report_data.csv, surplus_by_year.csv, injury_stints.csv,
+team_paid_<SEASON>.csv, team_staff.csv, and for past seasons war_model.json, stabilization.csv).
 
-Column contract:
-    PitcherId, Pitcher, Team, StuffPlus, StuffPlus_Scaled, LocationPlus,
-    CommandProxyLegacy, EdgePct, MeatballPct, BBPct, VolatilityPath,
-    VolatilityPercentile, TotalDaysMissed, ArmILStints, InjuryRiskScore,
-    RiskAdjWAR, ContractStatus, Salary_M, YearsControl, ControlYearsUsed,
-    ControlSource, SurplusActual_M, MultiYearSurplus_M,
-    SurplusPerControlYear_M, AsymmetricUpsideIndex, PitchMixInefficient,
-    MostUsedPitch, BestPitch,
-    Qualified, Pitches, PA, Appearances, StuffPlus_v1, StuffPlus_Scaled_v1,
-    StuffPlus_v2, StuffPlus_Scaled_v2, StuffPlus_Scaled_Reg, StuffPlus_Reliability,
-    StuffComparability, StuffPlus_Final, LocationPlus_Reg, LocationPlus_Reliability,
-    EdgePct_Reg, MeatballPct_Reg, BBPct_Reg, BBPct_Reliability, CommandProxyLegacy_Reg,
-    VolatilityScore, VolatilityScore_Reg, VolatilityReliability, VolatilityPercentile_Reg,
-    AsymmetricUpsideIndex_Reg, SalarySource, ContractEstimated, ContractValued, ValueNote,
-    ProjectedRole, ProjectedIP, ProjectedFIPR9, LegacyProjectedWAR, ActualWAR, ActualIP,
-    RemainingControl, FreeAgentAfterSeason, WARModel
-
-RiskAdjWAR = projected WAR for the season after config.SEASON (config.WAR_MODEL,
-see risk_adjusted_value.py); ProjectedRole/IP/FIPR9 are its parts. ActualWAR /
-ActualIP = config.SEASON's FIP-WAR (risk_adjusted_value's ActualWAR<SEASON>) and
-SurplusActual_M = ActualWAR x $/WAR - salary, a look-back.
-Past seasons only (config.PAIR_MODEL_FOR_SEASON) add ActualNextWAR / ActualNextIP:
-what the pitcher actually did the season after (0 with no MLB line), next to
-the out-of-sample RiskAdjWAR; their folder also gets war_model.json (the
-single-pair model that made the projection, war_calibration.pair_model) and
-stabilization.csv (the 2025 k values every season reuses), and their per-pitch
-files are shrunk (shrink_pitch_files: fewer columns, rounding). 2025 and 2026
-keep their hand-exported copies of those two files and their full pitch files. Names carry no year so
-the dashboard stays season-agnostic (it labels them from config.SEASON).
-MultiYearSurplus_M starts the season after config.SEASON; blank with
-FreeAgentAfterSeason = True when no control is left.
-
-ContractEstimated = on the default contract (not in the salaries file, not
-pre-arb: league minimum, 1 year, FA); the dashboard tags it "est. contract".
-ContractValued = False for config.TWO_WAY_EXCLUDE_VALUE (no surplus values;
-ValueNote says so). team_paid_<SEASON>.csv: what each team paid a pitcher it
-shared (the salaries file's TeamPaid<SEASON>, exported as TeamPaid), one row per pitcher x team.
-
-team_staff.csv (build_team_staff, any season, also league-only ones): each team's
-staff averaged and totaled, one row per Season x Team x Group (all / starter /
-reliever, role = that season's FIP-WAR Role, GS/G >= config.STARTER_GS_SHARE).
-A traded pitcher counts for each team in proportion to what he threw FOR it:
-  - averages of the shown (regressed) metrics are weighted by his pitches for
-    that team in the raw league Statcast pull (every pitch, fielding team =
-    PitcherTeam); *_Unweighted = plain mean over the team's pitchers, for comparison.
-    Pitchers under config.MIN_PITCHES_DASHBOARD have no values (the dashboard
-    doesn't show them), so WeightCoverage = share of the team's pitches that
-    carry a Stuff+ value.
-  - FIP-WAR is split by his IP for each team (MLB Stats API, team_records.pitcher_team_ip);
-    projected WAR and multi-year surplus by his pitch share (free agents and
-    two-way players have no surplus and are left out).
-  - payroll = the salaries file's Salary per pitcher x team, TeamPaid when that
-    team only paid part, plus the league-minimum estimate (Salary_M) x pitch
-    share for pitchers who threw for the team but have no salaries-file row for
-    it; two-way players are left out. Blank for seasons with no salaries file.
-UpsidePitchShare = share of the team's pitches thrown by pitchers with Upside Index
->= UPSIDE_TARGET_INDEX. *_Rank = 1-30 within Season x Group: 1 = highest, except
-Volatility percentile and Injury risk (1 = lowest, steadiest / healthiest).
-
-Dashboard minimum (apply_dashboard_minimum, run last): pitchers with fewer
-than config.MIN_PITCHES_DASHBOARD total pitches that season (all teams, so a traded
-pitcher with 60 for one team and 300 for another stays on both) are removed
-from EVERY dashboard/data/ file, and from data/missing_contract_report.csv,
-so no file has orphan rows. Pitchers at or above it whose shown metrics are
-all blank are listed as an upstream problem and kept
-(config.DROP_ALL_NA_PITCHERS turns that check on). Pitch types within a shown
-pitcher keep config.MIN_PITCHES_PER_TYPE_TO_DISPLAY. The grading pool, league
-means, stabilization and everything in data/results/ are untouched.
+    python -m analysis.export_report_data [--team-staff 2023 2024]   (--team-staff: only rebuild team_staff.csv)
 """
 import argparse
 import json
@@ -111,38 +50,39 @@ OUT_PATH = DASHBOARD_DATA / "pitcher_report_data.csv"
 SURPLUS_OUT_PATH = DASHBOARD_DATA / "surplus_by_year.csv"
 STINTS_OUT_PATH = DASHBOARD_DATA / "injury_stints.csv"
 TEAM_PAID_OUT_PATH = DASHBOARD_DATA / f"team_paid_{SEASON}.csv"
-# PitcherId, CurrentTeam: the team of each pitcher's last appearance (the League page lists a traded pitcher once, there)
+# PitcherId, CurrentTeam: the team of each pitcher's last game (the League page lists a traded pitcher once, there)
 CURRENT_TEAM_OUT_PATH = DASHBOARD_DATA / "current_team.csv"
 WAR_MODEL_OUT_PATH = DASHBOARD_DATA / "war_model.json"          # past seasons: the single-pair model's coefficients
 STABILIZATION_OUT_PATH = DASHBOARD_DATA / "stabilization.csv"   # past seasons: copy of the reused 2025 k values
-# 2025 keeps its original name; other dashboard seasons get their own file
+# 2025 keeps its original file name; other dashboard seasons get their own file
 MISSING_REPORT_PATH = Path(__file__).resolve().parent.parent / "data" / (
     "missing_contract_report.csv" if SEASON == DEFAULT_SEASON else f"missing_contract_report_{SEASON}.csv")
-# every dashboard/data/ file keyed on PitcherId, filtered by apply_dashboard_minimum()
+# every dashboard/data/ file keyed on PitcherId, filtered in step 3 (apply_dashboard_minimum)
 DASHBOARD_FILES = [
     stuff_plus_proxy.DASHBOARD_PATH, stuff_plus_proxy.DASHBOARD_PITCHES_PATH, stuff_plus_proxy.MOVEMENT_PITCHES_PATH,
     stuff_plus_proxy.VELOCITY_PATH, location_plus_proxy.DASHBOARD_PATH, OUT_PATH, SURPLUS_OUT_PATH,
     STINTS_OUT_PATH, TEAM_PAID_OUT_PATH, CURRENT_TEAM_OUT_PATH,
 ]
-# the metrics the dashboard shows per pitcher: (file, column)
+# the grades the dashboard shows per pitcher: (file, column); all blank = an upstream problem (step 3)
 SHOWN_METRICS = [
     (stuff_plus_proxy.DASHBOARD_PATH, "OverallStuffPlus_Final"),
     (OUT_PATH, "LocationPlus_Reg"), (OUT_PATH, "AsymmetricUpsideIndex_Reg"),
     (OUT_PATH, "VolatilityScore_Reg"), (OUT_PATH, "RiskAdjWAR"),
 ]
 
-# team_staff.csv (build_team_staff)
+# team_staff.csv (step 4, build_team_staff)
 TEAM_STAFF_FILE = "team_staff.csv"
-UPSIDE_TARGET_INDEX = 1.0
+UPSIDE_TARGET_INDEX = 1.0   # "upside target" pitchers: Upside Index at or above this
 STAFF_GROUPS = ["all", "starter", "reliever"]
-# output name -> pitcher column: the regressed values the dashboard shows
+# output name -> pitcher column: the small-sample values the dashboard shows
 STAFF_METRICS = {
     "StuffPlus": "StuffPlus_Final", "LocationPlus": "LocationPlus_Reg", "UpsideIndex": "AsymmetricUpsideIndex_Reg",
     "VolatilityPct": "VolatilityPercentile_Reg", "InjuryRisk": "InjuryRiskScore",
 }
-LOW_IS_BETTER = {"VolatilityPct", "InjuryRisk"}
+LOW_IS_BETTER = {"VolatilityPct", "InjuryRisk"}   # rank 1 = lowest for these
 STAFF_TOTALS = ["FIPWAR", "ProjWAR", "Payroll_M", "Surplus_M", "Pitchers", "UpsidePitchShare"]
 
+# The fixed column list of pitcher_report_data.csv (the dashboard reads these names)
 COLUMN_CONTRACT = [
     "PitcherId", "Pitcher", "Team", "StuffPlus", "StuffPlus_Scaled", "LocationPlus",
     "CommandProxyLegacy", "EdgePct", "MeatballPct", "BBPct", "VolatilityPath",
@@ -163,10 +103,12 @@ COLUMN_CONTRACT = [
 
 
 def millions(series: pd.Series) -> pd.Series:
+    """Dollars as $ millions, rounded to 2 decimals."""
     return (series / 1_000_000).round(2)
 
 
 def run():
+    """Steps 1-5 for config.SEASON."""
     if not WRITES_DASHBOARD:
         raise SystemExit(f"{SEASON} has no dashboard: export with python -m analysis.run_all --season {SEASON} --dashboard")
     if not RISK_ADJUSTED_PATH.exists():
@@ -174,6 +116,7 @@ def run():
 
     df = pd.read_parquet(RISK_ADJUSTED_PATH)
 
+    # 1. One row per pitcher with the fixed column list
     out = pd.DataFrame({
         "PitcherId": df["PitcherId"],
         "Pitcher": df["Pitcher"],
@@ -241,7 +184,7 @@ def run():
         "FreeAgentAfterSeason": df["FreeAgentAfterSeason"],
         "WARModel": df["WARModel"],
     })[COLUMN_CONTRACT]
-    if ACTUAL_NEXT_WAR_COL in df:   # past seasons: what actually happened the season after the projection
+    if ACTUAL_NEXT_WAR_COL in df:   # past seasons: what actually happened in the season that was projected
         out["ActualNextWAR"] = df[ACTUAL_NEXT_WAR_COL].round(2).to_numpy()
         out["ActualNextIP"] = df[ACTUAL_NEXT_IP_COL].round(1).to_numpy()
 
@@ -249,6 +192,7 @@ def run():
     out.to_csv(OUT_PATH, index=False)
     print(f"Saved {len(out)} rows to {OUT_PATH}")
 
+    # 2. The per-pitcher extras
     if SURPLUS_BY_YEAR_PATH.exists():
         by_year = pd.read_csv(SURPLUS_BY_YEAR_PATH)
         by_year.to_csv(SURPLUS_OUT_PATH, index=False)
@@ -263,6 +207,7 @@ def run():
         stints.to_csv(STINTS_OUT_PATH, index=False)
         print(f"Saved {len(stints)} rows to {STINTS_OUT_PATH}")
 
+    # 3. Dashboard minimum, 4. team staff averages, 5. past seasons' extras
     apply_dashboard_minimum()
     export_team_staff(SEASON)
     if SEASON in PAIR_MODEL_FOR_SEASON:
@@ -270,9 +215,9 @@ def run():
         shrink_pitch_files()
 
 
-# Past seasons only (config.PAIR_MODEL_FOR_SEASON): smaller per-pitch files. The dashboard draws the movement chart
-# from movement_pitches.csv.gz (1 decimal is finer than the chart can show) and only falls back to
-# stuff_plus_pitches.csv.gz when there is no movement file, so that one keeps PitcherId / PitchType / StuffPlus.
+# Step 5, past seasons only: smaller per-pitch files. The movement chart reads movement_pitches.csv.gz (1 decimal
+# is finer than the chart can show) and falls back to stuff_plus_pitches.csv.gz only when there is no movement file,
+# so that one keeps just PitcherId / PitchType / StuffPlus.
 PAST_PITCH_FILES = {
     stuff_plus_proxy.DASHBOARD_PITCHES_PATH: (["PitcherId", "PitchType", "StuffPlus"], {"StuffPlus": 0}),
     stuff_plus_proxy.MOVEMENT_PITCHES_PATH: (stuff_plus_proxy.MOVEMENT_COLUMNS,
@@ -281,6 +226,7 @@ PAST_PITCH_FILES = {
 
 
 def shrink_pitch_files():
+    """Step 5: rewrite the past season's per-pitch files with fewer columns and rounded values."""
     for path, (columns, digits) in PAST_PITCH_FILES.items():
         if not path.exists():
             continue
@@ -291,7 +237,7 @@ def shrink_pitch_files():
 
 
 def export_model_files():
-    """war_model.json (the single-pair model that projected SEASON + 1) and stabilization.csv, for the Home page."""
+    """Step 5: copy war_model.json (the model that projected SEASON + 1) and stabilization.csv for the Home page."""
     from analysis.war_calibration import pair_model   # imported here: war_calibration imports risk_adjusted_value
     WAR_MODEL_OUT_PATH.write_text(json.dumps(pair_model(SEASON), indent=1))
     shutil.copyfile(STABILIZATION_PATH, STABILIZATION_OUT_PATH)
@@ -299,7 +245,7 @@ def export_model_files():
 
 
 def save_current_team(league: pd.DataFrame) -> pd.DataFrame:
-    """CURRENT_TEAM_OUT_PATH: each pitcher's team (Statcast code) in his last game of the season, from the league frame."""
+    """Each pitcher's team (Statcast code) in his last game of the season; also saved to CURRENT_TEAM_OUT_PATH."""
     last = league.sort_values(["game_date", "game_pk"]).drop_duplicates("pitcher", keep="last")
     out = last.rename(columns={"pitcher": "PitcherId", "PitcherTeam": "CurrentTeam"})[["PitcherId", "CurrentTeam"]]
     out = pitchers_only(out, "PitcherId").sort_values("PitcherId")
@@ -309,15 +255,16 @@ def save_current_team(league: pd.DataFrame) -> pd.DataFrame:
 
 
 def pitches_in_season() -> pd.Series:
-    """Total cleaned SEASON pitches per PitcherId, all teams (the Stuff+ league table's PitchesThrown)."""
+    """Total pitches per pitcher this season, all teams combined (the Stuff+ league table's PitchesThrown)."""
     league = pd.read_parquet(stuff_plus_proxy.LEAGUE_PITCHER_PATH, columns=["PitcherId", "PitchesThrown"])
     return league.drop_duplicates("PitcherId").set_index("PitcherId")["PitchesThrown"]
 
 
 def apply_dashboard_minimum() -> pd.DataFrame:
-    """Drop pitchers under MIN_PITCHES_DASHBOARD from every dashboard file; list 100+ pitchers whose metrics are all blank.
+    """Step 3: one row per dropped pitcher x team, after removing pitchers under MIN_PITCHES_DASHBOARD from every file.
 
-    Returns one row per dropped pitcher x team.
+    Counted over all his teams, so a traded pitcher with 60 pitches for one team and 300 for another stays on both.
+    Pitchers above the minimum whose grades are all blank are listed (an upstream problem) and kept.
     """
     thrown = pitches_in_season()
     roster = pd.read_csv(stuff_plus_proxy.DASHBOARD_PATH, usecols=["PitcherId", "Pitcher", "PitcherTeam"]) \
@@ -349,7 +296,7 @@ def apply_dashboard_minimum() -> pd.DataFrame:
         if not broken.empty:
             print(broken[["Team", "Pitcher", "PitcherId", pitches_col]].to_string(index=False))
 
-    # keep only pitchers shown on some team (catches ids no roster has, e.g. salaries-file pitchers with no pitches that season)
+    # keep only pitchers shown on some team (drops ids no roster has, e.g. salaries-file pitchers with no pitches that season)
     shown_ids = set(roster["PitcherId"]) - drop_ids
     for path in DASHBOARD_FILES + [MISSING_REPORT_PATH]:
         if not path.exists():
@@ -373,15 +320,14 @@ def apply_dashboard_minimum() -> pd.DataFrame:
     return dropped
 
 
-# ── Team staff aggregates (team_staff.csv) ───────────────────────────────────
+# ── Step 4: team staff averages (team_staff.csv) ─────────────────────────────
 
 def team_pitch_weights(season: int) -> pd.DataFrame:
-    """PitcherId, Team, TeamPitches, PositionPlayer: every regular-season Statcast pitch in the season's raw league pull, by fielding team.
+    """PitcherId, Team, TeamPitches, PositionPlayer: each pitcher's regular-season pitches for each team (the weights).
 
-    Raw rows (no physics cleaning) so a team's weights add up to its Statcast
-    pitch total; position players are kept, flagged, and carry no metrics.
-    Regular season only (game_type R), to match the W-L records: the cached
-    Apr 1 - Sep 30 window can hold a few Wild Card games (2026-09-29).
+    Raw rows (no cleaning), so a team's weights add up to its Statcast pitch total; position players are kept and
+    flagged but have no grades. Regular season only, to match the win-loss records (the cached April 1 to
+    September 30 window can include a few postseason Wild Card games).
     """
     counts = []
     for start, end in _month_chunks(f"{season}-04-01", f"{season}-09-30"):
@@ -399,11 +345,10 @@ def team_pitch_weights(season: int) -> pd.DataFrame:
 
 
 def staff_pitcher_values(season: int) -> pd.DataFrame:
-    """One row per pitcher: the shown metrics, plus ProjWAR, Surplus_M, Salary_M where the season has them.
+    """One row per pitcher: the grades the dashboard shows, plus ProjWAR, Surplus_M and Salary_M where the season has them.
 
-    Dashboard seasons read dashboard/data/<season>/pitcher_report_data.csv (exactly what
-    the dashboard shows); league-only seasons read their asymmetric_upside /
-    volatility_discount tables, with pitchers under MIN_PITCHES_DASHBOARD blanked.
+    Dashboard seasons read their pitcher_report_data.csv (exactly what the dashboard shows); league-only seasons
+    read their results tables, with pitchers under MIN_PITCHES_DASHBOARD blanked.
     """
     report_path = DASHBOARD_ROOT / str(season) / OUT_PATH.name
     if report_path.exists():
@@ -425,13 +370,13 @@ def staff_pitcher_values(season: int) -> pd.DataFrame:
 
 
 def staff_rows(season: int) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """(one row per pitcher x team with weight, role, values and IP-split FIP-WAR; the API IP table)."""
+    """(one row per pitcher x team with his pitch weight, role, grades and innings-split FIP-WAR; the innings table)."""
     weights = team_pitch_weights(season)
     weights["PitchShare"] = weights["TeamPitches"] / weights.groupby("PitcherId")["TeamPitches"].transform("sum")
     war = load_fip_war(season)[["PitcherId", "Pitcher", "WAR", "Role"]]
     ip = pitcher_team_ip(season).merge(war, on="PitcherId", how="left")
     ip["IPShare"] = ip["IP"] / ip.groupby("PitcherId")["IP"].transform("sum")
-    ip["FIPWAR"] = ip["WAR"] * ip["IPShare"].fillna(0)   # no IP at all: no WAR either
+    ip["FIPWAR"] = ip["WAR"] * ip["IPShare"].fillna(0)   # FIP-WAR split by his innings for each team; no innings, no WAR
 
     rows = weights.merge(staff_pitcher_values(season), on="PitcherId", how="left")
     rows = rows.merge(war[["PitcherId", "Role"]], on="PitcherId", how="left")
@@ -445,7 +390,7 @@ def staff_rows(season: int) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def team_payroll(season: int, rows: pd.DataFrame) -> pd.DataFrame:
-    """PitcherId, Team, Paid ($M) for every pitcher a team paid: salaries file rows, else league-min estimate x pitch share."""
+    """PitcherId, Team, Paid_M for every pitcher a team paid: the salaries file (TeamPaid if partial), else the league-minimum estimate x pitch share."""
     paid = load_team_paid(season)
     if paid.empty:
         return pd.DataFrame(columns=["PitcherId", "Team", "Paid_M"])
@@ -461,13 +406,21 @@ def team_payroll(season: int, rows: pd.DataFrame) -> pd.DataFrame:
 
 
 def _weighted(group: pd.DataFrame, col: str) -> float:
+    """sum(pitches x value) / sum(pitches) over the pitchers who have a value."""
     has = group[col].notna()
     w = group.loc[has, "TeamPitches"]
     return float((group.loc[has, col] * w).sum() / w.sum()) if w.sum() > 0 else np.nan
 
 
 def build_team_staff(season: int) -> pd.DataFrame:
-    """One row per Team x Group (all / starter / reliever) for `season`; see the module docstring."""
+    """Step 4: one row per team x group (all / starter / reliever) for `season`.
+
+    Averages are pitch-weighted (_Unweighted = plain mean, for comparison); FIP-WAR is split by innings, projected
+    WAR and surplus by pitch share (free agents and two-way players have no surplus). Payroll = salaries file, or
+    the league-minimum estimate x pitch share for pitchers not in it (blank with no salaries file).
+    WeightCoverage = share of the team's pitches that carry a Stuff+ value. *_Rank: 1 = highest, except
+    volatility and injury risk (1 = lowest).
+    """
     rows, _ = staff_rows(season)
     payroll = team_payroll(season, rows).merge(rows[["PitcherId", "Team", "Role"]].drop_duplicates(["PitcherId", "Team"]),
                                                on=["PitcherId", "Team"], how="left")
@@ -506,6 +459,7 @@ def build_team_staff(season: int) -> pd.DataFrame:
 
 
 def export_team_staff(season: int) -> pd.DataFrame:
+    """Build and save dashboard/data/<season>/team_staff.csv."""
     staff = build_team_staff(season)
     path = DASHBOARD_ROOT / str(season) / TEAM_STAFF_FILE
     path.parent.mkdir(parents=True, exist_ok=True)

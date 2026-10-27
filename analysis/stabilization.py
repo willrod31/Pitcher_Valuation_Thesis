@@ -1,42 +1,27 @@
 """
-Stabilization points: how many pitches / PA / appearances before a metric is
-more signal than noise -- and the regression toward the league mean that
-uses them.
+Small-sample adjustment: how many pitches (or batters, or games) each stat needs before we trust it, and the
+formula every module uses to pull small samples toward the league average.
 
-Method (split-half, Carleton-style): for each metric and each sample size n
-in a grid, every qualified pitcher with at least 2n units gets two random,
-non-overlapping samples of n units; the metric is computed on each half and
-correlated across pitchers. Repeated N_REPEATS times and averaged. Then
-r(n) = n / (n + k) is fit by least squares over the grid, so k is the
-sample size where reliability = 0.5 (a single grid point implies
-k = n (1 - r) / r).
+Basically,when we have only seen a pitcher throw a few pitches, theres a chance his numbers could be luck. So we blend them
+with the league average, and the more pitches we see, the more we trust his own numbers.
 
-Regression toward the mean (used by every module for small samples):
+How it works:
+    1. For each stat and each sample size n, every qualified pitcher with at least 2n pitches gets two random,
+       non-overlapping halves of n. The stat is computed on both halves and correlated across pitchers (the
+       split-half correlation r), averaged over N_REPEATS random draws.
+    2. Find k, the sample size where the stat is 50% reliable, by fitting reliability r(n) = n / (n + k) by
+       least squares (the k that makes the curve closest to the measured r values).
+    3. Adjusted = (n x his value + k x league average) / (n + k); reliability = n / (n + k).
+       A big sample keeps its own number; a small one leans toward the average.
+Stats (unit of n): Stuff+ overall and per pitch type, Location+ overall and per pitch type, Edge%, Meatball%
+(pitches); walk rate BB% (plate appearances); volatility score for starters and relievers (outings).
+k is fit on config.DEFAULT_SEASON (2025) only; every other season reuses it.
 
-    Regressed   = (n * observed + k * league_mean) / (n + k)
-    Reliability = n / (n + k)
+Inputs: the cached league tables from stuff_plus_proxy, location_plus_proxy and volatility_discount (built on
+first use). Outputs: data/results/stabilization.csv (copied to dashboard/data/<season>/ for the Home page).
+Run this BEFORE the files that adjust small samples (they read the csv).
 
-league_mean is the qualified pool's mean on the metric's own scale (100 for
-the plus stats), so a pitcher with few pitches is pulled toward league
-average until the sample says otherwise.
-
-Metrics (unit of n):
-    StuffPlus_Scaled, overall and per pitch type   pitches
-        (overall: the mean of each pitch's z within its pitch type, which is what the
-        v3 pitcher grade averages; per type: the ratio, a linear transform of that z)
-    LocationPlus, overall and per pitch type       pitches
-    EdgePct, MeatballPct                           pitches
-    BBPct                                          plate appearances
-    VolatilityScore, starters and relievers        appearances
-
-Inputs are the other modules' cached league-wide tables (built on first use):
-stuff_plus_proxy.build_league_scores(), location_plus_proxy.build_scored_pitches(),
-volatility_discount.build_appearances(). Run this BEFORE the modules that
-regress (stuff_plus_proxy, location_plus_proxy, asymmetric_upside,
-volatility_discount), since they read data/stabilization.csv.
-
-    python -m analysis.stabilization
-    python -m analysis.stabilization --only-stuff   (refit the Stuff+ rows only; every other row is kept as is)
+    python -m analysis.stabilization [--only-stuff]   (--only-stuff refits the Stuff+ rows, keeps the rest)
 """
 import argparse
 
@@ -47,18 +32,19 @@ from scipy.optimize import minimize_scalar
 from analysis.utils import BASE_RESULTS_DIR
 from config import DEFAULT_SEASON, MIN_PITCHES_FOR_INCLUSION, MIN_PITCHES_PER_TYPE_FOR_SCALE, SEASON
 
-# Always the DEFAULT_SEASON (2025) fit: other seasons reuse these k values, they don't refit them.
+# Always the DEFAULT_SEASON (2025) fit: other seasons reuse these k values, they don't refit them
 STABILIZATION_PATH = BASE_RESULTS_DIR / "stabilization.csv"
 
+# Sample sizes n tried in step 1, per unit (pitches, plate appearances, outings)
 PITCH_GRID = [25, 50, 100, 200, 400]
 PA_GRID = [25, 50, 100, 200]
 APPEARANCE_GRID = [5, 10, 15]
-N_REPEATS = 5
-MIN_PITCHERS_PER_POINT = 30   # fewer pitchers than this with 2n units -> no r at that n
+N_REPEATS = 5                 # random splits averaged at each n
+MIN_PITCHERS_PER_POINT = 30   # fewer pitchers than this with 2n units: no r at that n
 SEED = 42
 
 
-# ── Regression toward the mean (imported by the other modules) ──────────────
+# ── Step 3: pull toward the league average (imported by the other modules) ──
 
 _k_cache: dict | None = None
 
@@ -80,21 +66,22 @@ def load_k(metric: str, fallback: str | None = None) -> float:
 
 
 def reliability(n, k: float):
+    """n / (n + k): the share of his own value that is kept (0.5 at n = k)."""
     return n / (n + k)
 
 
 def regress(observed, n, k: float, league_mean: float):
-    """(n * observed + k * league_mean) / (n + k)."""
+    """(n x observed + k x league_mean) / (n + k): his value pulled toward the league average by sample size."""
     return (n * observed + k * league_mean) / (n + k)
 
 
-# ── Split-half draws ─────────────────────────────────────────────────────────
+# ── Step 1: split-half draws ─────────────────────────────────────────────────
 
 def split_half_r(units: pd.DataFrame, n: int, half_metric, rng: np.random.Generator, id_col: str = "PitcherId") -> tuple[float, int]:
-    """One split-half correlation at sample size n.
+    """(r, pitchers): one split-half correlation at sample size n, and how many pitchers it used.
 
-    units: one row per unit (pitch / PA / appearance) with id_col.
-    half_metric(half_df) -> Series indexed by id_col (the metric on that half).
+    units: one row per unit (pitch, plate appearance or outing) with id_col.
+    half_metric(half_df) -> Series indexed by id_col (the stat on that half).
     """
     counts = units[id_col].value_counts()
     eligible = units[units[id_col].isin(counts[counts >= 2 * n].index)]
@@ -120,7 +107,7 @@ def reliability_curve(units: pd.DataFrame, grid: list[int], half_metric, rng: np
 
 
 def fit_k(curve: dict) -> float:
-    """Least-squares k in r(n) = n / (n + k) over the grid points that have an r."""
+    """Step 2: the k that best fits r(n) = n / (n + k) (least squares) over the sample sizes that have an r."""
     points = [(n, r) for n, r in curve.items() if pd.notna(r)]
     if not points:
         return np.nan
@@ -130,22 +117,23 @@ def fit_k(curve: dict) -> float:
 
 
 def mean_of(col: str, id_col: str = "PitcherId"):
+    """A half_metric that averages `col` per pitcher."""
     return lambda half: half.groupby(id_col)[col].mean()
 
 
-# ── Metric inputs ────────────────────────────────────────────────────────────
+# ── Inputs for each stat ─────────────────────────────────────────────────────
 
 def qualified_only(df: pd.DataFrame, id_col: str = "PitcherId") -> pd.DataFrame:
+    """The rows of pitchers with config.MIN_PITCHES_FOR_INCLUSION+ rows (pitches)."""
     counts = df[id_col].value_counts()
     return df[df[id_col].isin(counts[counts >= MIN_PITCHES_FOR_INCLUSION].index)]
 
 
 def stuff_units() -> pd.DataFrame:
-    """Qualified pitchers' scored pitches: StuffPlus (ratio) and StuffZ (the ratio as a z within the pitch type).
+    """Qualified pitchers' scored pitches with StuffPlus (ratio) and StuffZ (the ratio as a z within its pitch type).
 
-    StuffZ uses the same pool as the v3 grade: pitcher x pitch type means with
-    MIN_PITCHES_PER_TYPE_FOR_SCALE+ pitches of that type. A pitcher's mean
-    StuffZ is his usage-weighted per-type z, i.e. what his overall grade scales.
+    StuffZ uses the same pool as the Stuff+ grade (pitcher x pitch type rows with MIN_PITCHES_PER_TYPE_FOR_SCALE+
+    pitches), so a pitcher's average StuffZ is the usage-weighted per-type z his overall grade is built from.
     """
     from analysis.stuff_plus_proxy import build_league_scores
     scored = build_league_scores()[["PitcherId", "PitchType", "StuffPlus"]]
@@ -157,7 +145,7 @@ def stuff_units() -> pd.DataFrame:
 
 
 def location_units() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """(pitch-level: LocationValue, Edge, Meatball; PA-level: Walk) for qualified pitchers."""
+    """(pitch rows: LocationValue, Edge, Meatball; plate-appearance rows: Walk) for qualified pitchers."""
     from analysis.asymmetric_upside import EDGE_BAND, MEATBALL_MAX
     from analysis.location_plus_proxy import PLATE_HALF_WIDTH_FT, build_scored_pitches
 
@@ -178,7 +166,7 @@ def location_units() -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def volatility_half_metric(half: pd.DataFrame) -> pd.Series:
-    """VolatilityScore on one half: z(velo SD) + z(release SD) across this half's pitchers."""
+    """The volatility score on one half: z(speed SD) + z(release SD) across this half's pitchers."""
     from analysis.utils import zscore
     per = half.groupby("PitcherId").agg(
         Velo=("MeanVelo", "std"), RelX=("MeanRelX", "std"), RelZ=("MeanRelZ", "std"))
@@ -187,17 +175,20 @@ def volatility_half_metric(half: pd.DataFrame) -> pd.Series:
 
 
 def volatility_units() -> pd.DataFrame:
+    """Qualified pitchers' outings, labeled starter or reliever (volatility_discount step 1)."""
     from analysis.volatility_discount import assign_volatility_path, build_appearances
     return assign_volatility_path(build_appearances())
 
 
-# ── Table ────────────────────────────────────────────────────────────────────
+# ── The k table ──────────────────────────────────────────────────────────────
 
 def build_table(only_stuff: bool = False) -> pd.DataFrame:
+    """One row per stat: unit, k, and the measured r at every sample size (steps 1-2)."""
     rng = np.random.default_rng(SEED)
     rows = []
 
     def add(metric, unit, grid, units, half_metric):
+        # 1. split-half r at each n, then 2. fit k
         curve, pitchers = reliability_curve(units, grid, half_metric, rng)
         row = {"metric": metric, "unit": unit, "k": fit_k(curve), "pitchers_at_max_n": pitchers}
         row.update({f"r_{n}": r for n, r in curve.items()})
@@ -211,7 +202,7 @@ def build_table(only_stuff: bool = False) -> pd.DataFrame:
         add(f"StuffPlus_Scaled[{pitch_type}]", "pitches", PITCH_GRID, group, mean_of("StuffPlus"))
     del stuff
     if only_stuff:
-        # Stuff+ is drawn first with a fresh SEED rng, so these rows equal a full run's; keep every other row as is
+        # Stuff+ is drawn first from a fresh SEED, so these rows equal a full run's; every other row is kept as is
         stuff_rows = pd.DataFrame(rows)
         old = pd.read_csv(STABILIZATION_PATH)
         old = old[~old["metric"].str.startswith("StuffPlus_Scaled")]
@@ -240,6 +231,7 @@ def build_table(only_stuff: bool = False) -> pd.DataFrame:
 
 
 def print_table(table: pd.DataFrame):
+    """Print the k table, rounded."""
     shown = table.copy()
     shown["k"] = shown["k"].round(1)
     r_cols = [c for c in shown if c.startswith("r_")]
@@ -250,6 +242,7 @@ def print_table(table: pd.DataFrame):
 
 
 def run(only_stuff: bool = False):
+    """Fit and save the k table (2025 only; other seasons reuse it)."""
     if SEASON != DEFAULT_SEASON:
         raise SystemExit(f"Stabilization k values are fit on {DEFAULT_SEASON} only and reused for other seasons "
                          f"(THESIS_SEASON={SEASON}); unset THESIS_SEASON to refit.")

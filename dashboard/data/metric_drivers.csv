@@ -1,0 +1,25 @@
+Season,metric,metric_label,driver,driver_label,driver_unit,driver_sd,coefficient,unique_r2,p,model_r2,n
+2025,InjuryRisk,Injury risk,ArmILStints,arm injured-list stints,stints,1.1271,0.567,0.157,0.0,0.862,470
+2025,InjuryRisk,Injury risk,TotalDaysMissed,days on the injured list,days,125.6776,0.434,0.091,0.0,0.862,470
+2025,LocationPlus,Location+,BBPct,walk rate,walks per batter,0.025,-0.576,0.284,0.0,0.472,470
+2025,LocationPlus,Location+,EdgePct,share of pitches on the edge of the strike zone,share of pitches,0.0147,0.27,0.067,0.0,0.472,470
+2025,LocationPlus,Location+,MeatballPct,share of pitches down the middle,share of pitches,0.0124,-0.08,0.006,0.0222,0.472,470
+2025,ProjectedWAR,Projected WAR,IP,this season's innings,innings,49.2874,0.836,0.596,0.0,0.835,716
+2025,ProjectedWAR,Projected WAR,Age,age,years,3.8351,-0.157,0.021,0.0,0.835,716
+2025,ProjectedWAR,Projected WAR,FIPR9_reg,"this season's runs allowed per 9 innings (FIPR9, adjusted)",runs per 9,0.5707,-0.158,0.015,0.0,0.835,716
+2025,ProjectedWAR,Projected WAR,StuffPlus,Stuff+,points,8.2667,0.104,0.009,0.0,0.835,716
+2025,ProjectedWAR,Projected WAR,InjuryRiskScore,injury risk,0-1 score,0.3847,0.093,0.008,0.0,0.835,716
+2025,ProjectedWAR,Projected WAR,VolatilityScore_Reg,volatility score,score,1.043,-0.056,0.003,0.0003,0.835,716
+2025,ProjectedWAR,Projected WAR,KminusBBPct,strikeout rate minus walk rate,share of batters,0.0692,0.031,0.001,0.1295,0.835,716
+2025,ProjectedWAR,Projected WAR,LocationPlus,Location+,points,7.7486,0.017,0.0,0.32,0.835,716
+2025,StuffPlus,Stuff+,FastballVelo,fastball speed,mph,2.4104,0.42,0.153,0.0,0.317,470
+2025,StuffPlus,Stuff+,FastballSpin,fastball spin rate,rpm,143.1833,0.261,0.055,0.0,0.317,470
+2025,StuffPlus,Stuff+,FastballArmSideHB,fastball sideways movement toward his arm side,inches,3.852,0.02,0.0,0.6335,0.317,470
+2025,StuffPlus,Stuff+,FastballIVB,fastball rise (induced vertical break),inches,3.6155,0.011,0.0,0.7999,0.317,470
+2025,Surplus,Multi-year surplus,ProjectedWAR,projected WAR,WAR,0.6829,0.769,0.482,0.0,0.757,500
+2025,Surplus,Multi-year surplus,Salary_M,this season's salary,$M,5.672,-0.703,0.359,0.0,0.757,500
+2025,Surplus,Multi-year surplus,ControlYearsUsed,years of team control counted,years,1.3995,0.252,0.056,0.0,0.757,500
+2025,UpsideIndex,Upside Index,StuffPlus,Stuff+,points,8.2619,0.678,0.45,0.0,1.0,470
+2025,UpsideIndex,Upside Index,LocationPlus,Location+,points,7.8057,-0.641,0.402,0.0,1.0,470
+2025,VolatilityScore,Volatility score,ReleaseVolatility,game-to-game change in release point,feet,0.0857,0.695,0.482,0.0,0.819,501
+2025,VolatilityScore,Volatility score,VeloVolatility,game-to-game change in average speed,mph,0.3977,0.549,0.3,0.0,0.819,501

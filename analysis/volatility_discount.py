@@ -1,30 +1,28 @@
 """
-Volatility Discount Metric.
+Volatility: how consistent each pitcher is from one game to the next (higher = less consistent = riskier).
 
-Computes outing-to-outing variance in release point and velocity, then
-regresses next-outing performance on current (trailing) volatility to test
-whether volatility actually predicts decline -- as opposed to just being
-something the market appears to penalize.
+In simple terms: volatility measures how much a pitcher's throwing speed and the spot where he lets go of the ball
+(his release point) change from one game to the next. A starter (who begins the game and usually pitches 5-6
+innings) is compared only with starters; a reliever (who comes in later for a shorter stint) only with relievers.
 
-Two paths, labeled in the VolatilityPath column: starters (8+ starts of 20+
-pitches) are measured start to start; everyone else is measured appearance
-to appearance (15+ appearances of 10+ pitches), so relievers get a real
-score instead of defaulting to the 50th percentile downstream.
+How it works:
+    1. Pick the unit. Starters: starts of 20+ pitches (he needs 8+ of them). Relievers (everyone else):
+       appearances of 10+ pitches (15+ needed). A pitcher with neither but 100+ pitches is scored from whichever
+       kind of outing he has more of, but is not in the comparison pool.
+    2. For each outing, average his speed and his release point (side and height).
+    3. Speed volatility = standard deviation (SD, the typical spread) of those outing averages.
+       Release volatility = sqrt(SD(side)^2 + SD(height)^2).
+    4. Volatility score = z(speed volatility) + z(release volatility), against qualified pitchers in his role.
+    5. Small samples: pulled toward the average score, with k from analysis/stabilization.py (about 7 outings).
+    6. Shown as a percentile: the share of his role's pool at or below him. Higher = more volatile = riskier.
+Also tests (exploratory, printed only) whether volatility so far predicts the next outing's result, and whether it
+predicts a trip to the injured list (IL) within IL_WINDOW_DAYS.
 
-Small samples: pitchers who qualify for neither path but threw
-config.MIN_PITCHES_TO_DISPLAY+ pitches get a score too, from whichever unit
-they have more of, labeled Qualified = False (see assign_small_sample_path).
-Their z-scores use the QUALIFIED path pool's mean/SD, so they don't move
-anyone else's grade. VolatilityScore_Reg = (n * score + k * pool mean) / (n + k)
-with n = appearances and k per path from analysis/stabilization.py;
-VolatilityPercentile(_Reg) = share of the qualified path pool at or below it.
+Inputs: the league-wide Statcast season, data/results/stabilization.csv, injury_history.py's tables (run first).
+Outputs: data/results/volatility_discount.parquet and volatility_appearances.parquet (league-wide; --team only
+filters what is printed).
 
-Graded league-wide (loaded one month at a time via load_season_monthly(),
-since a single full-season pull OOMs on an 8GB machine); --team only
-filters the printed output.
-
-Also pulls in IL history from injury_history.py (run that first) to see if
-volatility predicts going on the IL, not just a bad next start.
+    python -m analysis.volatility_discount [--team PIT] [--refresh]
 """
 import argparse
 
@@ -42,8 +40,7 @@ from analysis.utils import RESULTS_DIR, pct_vs_pool, zscore_vs
 OUT_PATH = RESULTS_DIR / "volatility_discount.parquet"
 APPEARANCES_PATH = RESULTS_DIR / "volatility_appearances.parquet"   # one row per pitcher x game (cached)
 
-# Only what this module uses -- keeps the league-wide 6-month frame small
-# (see data_acquisition.load_season_monthly).
+# Only the columns this file uses, to keep the league-wide six-month frame small
 RAW_COLUMNS = [
     "pitcher", "home_team", "away_team", "inning_topbot",
     "release_speed", "release_spin_rate", "release_extension", "pfx_z", "pfx_x", "pitch_type",
@@ -52,20 +49,20 @@ RAW_COLUMNS = [
 ]
 
 # Starter path: one unit = one start
-MIN_PITCHES_PER_START = 20   # drops openers/short outings from the "start" unit
-MIN_STARTS = 8                # need enough starts for variance to mean anything
+MIN_PITCHES_PER_START = 20   # drops openers and very short outings from the "start" unit
+MIN_STARTS = 8                # enough starts for a spread to mean something
 # Reliever path: one unit = one appearance, for pitchers without MIN_STARTS starts
 MIN_PITCHES_PER_RELIEF = 10
 MIN_RELIEF_APPEARANCES = 15
-MIN_UNITS_FOR_SCORE = 2       # small-sample path: fewest units a raw score (an SD) can be computed from
-TRAILING_MIN_STARTS = 3       # min prior appearances before trailing volatility is computed
-IL_WINDOW_DAYS = 30           # "went on the IL soon after this start" window
+MIN_UNITS_FOR_SCORE = 2       # small-sample path: an SD needs at least two outings
+TRAILING_MIN_STARTS = 3       # earlier outings needed before "volatility so far" is computed
+IL_WINDOW_DAYS = 30           # "went on the IL soon after this outing" window, in days
 
 
 def build_appearance_level(df: pd.DataFrame) -> pd.DataFrame:
-    """Collapse pitch-level data to one row per PitcherId x game (appearance).
+    """Step 2: one row per pitcher x game with his average speed, release point and run value.
 
-    Started = this pitcher threw his team's first pitch of the game.
+    Started = he threw his team's first pitch of the game.
     """
     df = df.rename(columns={"pitcher": "PitcherId"})
     first_pitch = (
@@ -78,7 +75,7 @@ def build_appearance_level(df: pd.DataFrame) -> pd.DataFrame:
         MeanVelo=("release_speed", "mean"),
         MeanRelX=("release_pos_x", "mean"),
         MeanRelZ=("release_pos_z", "mean"),
-        RunValue=("delta_run_exp", lambda s: -s.sum()),  # runs prevented; higher = better outing
+        RunValue=("delta_run_exp", lambda s: -s.sum()),  # runs saved; higher = better outing
     ).reset_index()
     apps = apps.merge(first_pitch, on=["game_pk", "PitcherTeam", "PitcherId"], how="left")
     apps["Started"] = apps["Started"].fillna(False).astype(bool)
@@ -86,9 +83,9 @@ def build_appearance_level(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_appearances(force_refresh: bool = False) -> pd.DataFrame:
-    """League-wide appearance table (plus Pitcher name), cached -- also read by analysis/stabilization.py."""
+    """The league-wide pitcher x game table (with names), cached; analysis/stabilization.py reads it too."""
     if APPEARANCES_PATH.exists() and not force_refresh:
-        # pitchers_only: the cache may predate the position filter
+        # pitchers_only drops position players, in case the cache was saved before that filter existed
         return pitchers_only(pd.read_parquet(APPEARANCES_PATH), "PitcherId")
     print(f"Loading league-wide Statcast {START_DATE} to {END_DATE} (month by month)...")
     df = load_season_monthly(START_DATE, END_DATE, columns=RAW_COLUMNS, force_refresh=force_refresh)
@@ -101,18 +98,16 @@ def build_appearances(force_refresh: bool = False) -> pd.DataFrame:
 
 
 def primary_team_from_apps(apps: pd.DataFrame) -> pd.Series:
-    """PitcherTeam each pitcher threw the most pitches for (same rule as data_acquisition.primary_team)."""
+    """The team each pitcher threw the most pitches for, indexed by PitcherId."""
     counts = apps.groupby(["PitcherId", "PitcherTeam"])["Pitches"].sum().rename("n").reset_index()
     return counts.sort_values("n", ascending=False).drop_duplicates("PitcherId").set_index("PitcherId")["PitcherTeam"]
 
 
 def assign_volatility_path(apps: pd.DataFrame) -> pd.DataFrame:
-    """Pick each pitcher's unit of volatility and keep only those appearances.
+    """Step 1: the outings that count for qualified pitchers, labeled with their role (VolatilityPath).
 
-    starter:  starts with MIN_PITCHES_PER_START+ pitches, needs MIN_STARTS of them
-    reliever: everyone else -- appearances with MIN_PITCHES_PER_RELIEF+ pitches,
-              needs MIN_RELIEF_APPEARANCES of them
-    Pitchers who qualify for neither get no volatility score.
+    starter:  starts with MIN_PITCHES_PER_START+ pitches; he needs MIN_STARTS of them
+    reliever: everyone else, appearances with MIN_PITCHES_PER_RELIEF+ pitches; he needs MIN_RELIEF_APPEARANCES
     """
     starts = apps[apps["Started"] & (apps["Pitches"] >= MIN_PITCHES_PER_START)]
     start_counts = starts.groupby("PitcherId").size()
@@ -130,15 +125,11 @@ def assign_volatility_path(apps: pd.DataFrame) -> pd.DataFrame:
 
 
 def assign_small_sample_path(apps: pd.DataFrame, qualified_ids) -> pd.DataFrame:
-    """Units for pitchers outside both qualified paths (but MIN_PITCHES_TO_DISPLAY+ pitches).
+    """Step 1, small samples: outings for pitchers in neither qualified group who threw MIN_PITCHES_TO_DISPLAY+ pitches.
 
-    Path = whichever unit they have more of (starts of MIN_PITCHES_PER_START+
-    vs. relief appearances of MIN_PITCHES_PER_RELIEF+; ties go to reliever).
-    If that path has fewer than MIN_UNITS_FOR_SCORE units, all of the
-    pitcher's appearances with MIN_PITCHES_PER_RELIEF+ pitches are used
-    instead (e.g. 1 start + 2 long relief outings). Pitchers still under
-    MIN_UNITS_FOR_SCORE get no raw score, and their regressed score is the
-    pool mean (reliability ~0) -- see compute_season_volatility.
+    Role = whichever kind of outing he has more of (ties go to reliever). If that gives fewer than
+    MIN_UNITS_FOR_SCORE outings, all his appearances with MIN_PITCHES_PER_RELIEF+ pitches are used instead.
+    A pitcher still under MIN_UNITS_FOR_SCORE gets no unadjusted score; his adjusted score is the pool average.
     """
     apps = apps[~apps["PitcherId"].isin(qualified_ids)]
     total = apps.groupby("PitcherId")["Pitches"].sum()
@@ -161,14 +152,11 @@ def assign_small_sample_path(apps: pd.DataFrame, qualified_ids) -> pd.DataFrame:
 
 
 def compute_season_volatility(units: pd.DataFrame, team_by_id: pd.Series, small_units: pd.DataFrame | None = None) -> pd.DataFrame:
-    """Season-long outing-to-outing volatility -- the number the dashboard shows.
+    """Steps 3-6: one row per pitcher with his season volatility score, small-sample score and percentile.
 
-    Z-scores/percentiles are computed within each path (starters vs. starters,
-    relievers vs. relievers), league-wide: per-appearance means over ~15
-    reliever pitches are noisier than over ~90 starter pitches, so pooling
-    them would rank nearly every reliever as "volatile". The mean/SD and
-    percentile pool are the QUALIFIED pitchers in `units` only;
-    `small_units` pitchers are graded against that pool.
+    Graded within each role, league-wide: an outing average over ~15 reliever pitches is noisier than over ~90
+    starter pitches, so pooling them would rank nearly every reliever as volatile. The average, spread and
+    percentile pool come from the QUALIFIED pitchers in `units`; `small_units` pitchers are graded against them.
     """
     units = pd.concat([units.assign(Qualified=True), (small_units if small_units is not None else units.iloc[:0]).assign(Qualified=False)],
                       ignore_index=True)
@@ -182,32 +170,33 @@ def compute_season_volatility(units: pd.DataFrame, team_by_id: pd.Series, small_
     ).reset_index()
     per_pitcher.insert(1, "PitcherTeam", per_pitcher["PitcherId"].map(team_by_id))
 
+    # 3. Release volatility combines the side and height spreads
     per_pitcher["ReleaseVolatility"] = np.sqrt(
         per_pitcher["RelXVolatility"] ** 2 + per_pitcher["RelZVolatility"] ** 2
     )
     for path, rows in per_pitcher.groupby("VolatilityPath"):
+        # 4. Score = z(speed volatility) + z(release volatility), within his role
         pool = rows[rows["Qualified"]]
         score = (zscore_vs(rows["VeloVolatility"], pool["VeloVolatility"])
                  + zscore_vs(rows["ReleaseVolatility"], pool["ReleaseVolatility"]))
         pool_score = score[rows["Qualified"]]
         k = load_k(f"VolatilityScore[{path}]")
-        # under MIN_UNITS_FOR_SCORE appearances there's no SD, so no raw score: regressed = pool mean
+        # 5. Small samples pulled toward the pool's average score (fewer than 2 outings: no SD, so just the average)
         reg = regress(score.fillna(pool_score.mean()), rows["Appearances"], k, pool_score.mean())
         per_pitcher.loc[rows.index, "VolatilityScore"] = score
         per_pitcher.loc[rows.index, "VolatilityScore_Reg"] = reg
         per_pitcher.loc[rows.index, "VolatilityReliability"] = reliability(rows["Appearances"], k).round(3)
+        # 6. Percentile: share of the qualified pool in his role at or below him
         per_pitcher.loc[rows.index, "VolatilityPercentile"] = pct_vs_pool(score, pool_score).round(1)
         per_pitcher.loc[rows.index, "VolatilityPercentile_Reg"] = pct_vs_pool(reg, pool_score).round(1)
     return per_pitcher
 
 
 def compute_trailing_volatility(units: pd.DataFrame) -> pd.DataFrame:
-    """Expanding (prior-outings-only) volatility as of each outing, paired with the NEXT outing's result.
+    """The outings with "volatility so far" (from earlier outings only) and the NEXT outing's run value added.
 
-    Uses an expanding window rather than a fixed 30-day one so it works off
-    outing count (consistent across pitchers regardless of missed time);
-    swap in a date-based rolling window here if pitcher-specific rest gaps
-    matter more than outing count.
+    Uses every earlier outing (an expanding window) rather than a fixed number of days, so it depends on the
+    number of outings, not on missed time.
     """
     units = units.sort_values(["PitcherId", "game_date"]).copy()
     grouped = units.groupby("PitcherId")
@@ -224,11 +213,9 @@ def compute_trailing_volatility(units: pd.DataFrame) -> pd.DataFrame:
 
 
 def run_predictive_regression(starts_with_trailing: pd.DataFrame, label: str = "starter") -> LinearRegression | None:
-    """Does trailing volatility predict the NEXT outing's run value?
+    """The fitted model (or None) for: does volatility so far predict the NEXT outing's run value?
 
-    Pooled OLS across all pitcher-starts (not per-pitcher) -- exploratory,
-    not causal: confirms whether the market's volatility penalty is
-    justified by actual future performance, or is overreacting to noise.
+    One ordinary least squares (OLS) regression over every pitcher-outing; exploratory, not causal.
     """
     reg_cols = ["TrailingVeloVolatility", "TrailingReleaseVolatility", "NextRunValue"]
     data = starts_with_trailing.dropna(subset=reg_cols)
@@ -255,7 +242,7 @@ def run_predictive_regression(starts_with_trailing: pd.DataFrame, label: str = "
 
 
 def attach_injury_history(season_volatility: pd.DataFrame) -> pd.DataFrame:
-    """Join IL history on PitcherId. NaN = not pulled yet, 0 = no IL time."""
+    """The table with each pitcher's IL history joined on (blank = not pulled yet, 0 = no IL time)."""
     if not SUMMARY_PATH.exists():
         print(f"No {SUMMARY_PATH.name} yet -- run python -m analysis.injury_history --team XXX first")
         return season_volatility
@@ -265,11 +252,10 @@ def attach_injury_history(season_volatility: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_il_outcomes(starts: pd.DataFrame, stints: pd.DataFrame) -> pd.DataFrame:
-    """Flag starts followed by an IL stint within IL_WINDOW_DAYS.
+    """The outings with ILWithin<N>Days (an IL stint began within IL_WINDOW_DAYS) and prior IL history added.
 
-    PriorILDays/PriorArmILStints only count seasons before SEASON. The summary
-    totals include this season, so using them would include the stints we're
-    trying to predict.
+    PriorILDays / PriorArmILStints count only seasons before SEASON: the summary totals include this season,
+    so using them would include the stints we are trying to predict.
     """
     starts = starts.copy()
     stints = stints.copy()
@@ -300,10 +286,9 @@ def add_il_outcomes(starts: pd.DataFrame, stints: pd.DataFrame) -> pd.DataFrame:
 
 
 def run_injury_regression(starts_with_outcomes: pd.DataFrame):
-    """Logistic regression: trailing volatility -> IL stint in the next IL_WINDOW_DAYS.
+    """The fitted model (or None) for: does volatility so far predict an IL stint in the next IL_WINDOW_DAYS?
 
-    Prior IL history as controls. Exploratory, sample is small until more
-    teams have injury data pulled.
+    Logistic regression (a model for yes/no outcomes) with prior IL history as controls; exploratory.
     """
     target = f"ILWithin{IL_WINDOW_DAYS}Days"
     features = ["TrailingVeloVolatility", "TrailingReleaseVolatility", "PriorILDays", "PriorArmILStints"]
@@ -315,7 +300,7 @@ def run_injury_regression(starts_with_outcomes: pd.DataFrame):
         print("Not enough IL outcomes to fit yet -- pull injury history for more teams.")
         return None
 
-    X = (data[features] - data[features].mean()) / data[features].std()  # standardize so coefs are comparable
+    X = (data[features] - data[features].mean()) / data[features].std()  # z-scores, so the coefficients are comparable
     model = LogisticRegression().fit(X, data[target])
     for name, coef in zip(features, model.coef_[0]):
         print(f"coef {name:<26} = {coef:.4f}")
@@ -324,24 +309,27 @@ def run_injury_regression(starts_with_outcomes: pd.DataFrame):
 
 
 def run(team: str | None = None, force_refresh: bool = False):
+    """Grade the league, print one team (or the 20 most volatile), then run the two prediction tests."""
     season_volatility, units = grade_league(force_refresh=force_refresh)
     show(season_volatility, team)
     run_regressions(units)
 
 
 def grade_league(force_refresh: bool = False) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """League-wide volatility table, saved to OUT_PATH. Returns (table, appearance units) -- units feed run_regressions()."""
+    """(league-wide volatility table, the outings used): the table is also saved to OUT_PATH; the outings feed run_regressions()."""
     apps = build_appearances(force_refresh=force_refresh)
     team_by_id = primary_team_from_apps(apps)
     name_by_id = apps.drop_duplicates("PitcherId").set_index("PitcherId")["Pitcher"]
 
+    # 1. Pick each pitcher's outings (qualified starters and relievers, then small samples)
     units = assign_volatility_path(apps)
     small_units = assign_small_sample_path(apps, units["PitcherId"].unique())
 
+    # 2-6. Spread of his outing averages, score, small-sample adjustment, percentile
     season_volatility = compute_season_volatility(units, team_by_id, small_units)
     season_volatility.insert(1, "Pitcher", season_volatility["PitcherId"].map(name_by_id))
     season_volatility = attach_injury_history(season_volatility)
-    # Always save the league-wide table; --team only filters what's printed.
+    # Always save the whole league; --team only filters what is printed
     season_volatility.to_parquet(OUT_PATH, index=False)
     print(f"Saved {len(season_volatility)} league-wide rows to {OUT_PATH}")
     print(season_volatility.groupby(["VolatilityPath", "Qualified"]).size().to_string())
@@ -349,7 +337,7 @@ def grade_league(force_refresh: bool = False) -> tuple[pd.DataFrame, pd.DataFram
 
 
 def show(season_volatility: pd.DataFrame, team: str | None = None):
-    """Print a team's pitchers (or the 20 most volatile league-wide)."""
+    """Print a team's pitchers (or the 20 most volatile in the league)."""
     if team:
         shown = filter_to_team(season_volatility, team).sort_values("VolatilityPercentile", ascending=False)
         title = f"{team}, graded vs. league"
@@ -361,7 +349,7 @@ def show(season_volatility: pd.DataFrame, team: str | None = None):
 
 
 def run_regressions(units: pd.DataFrame):
-    """League-wide tests: does volatility predict next-outing results, and an IL stint soon after?"""
+    """Print the two league-wide tests: does volatility predict the next outing's result, and an IL stint soon after?"""
     trailing = compute_trailing_volatility(units)
     for path, path_units in trailing.groupby("VolatilityPath"):
         run_predictive_regression(path_units, label=path)

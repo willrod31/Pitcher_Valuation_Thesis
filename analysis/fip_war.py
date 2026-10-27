@@ -1,34 +1,26 @@
 """
-FIP-based WAR from the MLB Stats API -- the "real WAR" target the WAR
-projection is calibrated against (analysis/war_calibration.py).
+FIP-WAR: each pitcher's actual value for a season, in wins, from MLB Stats API season totals.
 
-Follows FanGraphs' published FIP-WAR method (FanGraphs Library, "FIP-based
-WAR"), computed from MLB Stats API season totals only:
+WAR (wins above replacement) estimates how many extra games a team won because of this pitcher,
+compared with an easily available backup pitcher. This version (FIP-WAR) uses only what the pitcher controls
+himself: strikeouts (K), walks (BB), hit batters (HBP) and home runs (HR). It is the "real WAR" the projection
+in war_calibration.py is tested against. It follows FanGraphs' published FIP-WAR method.
 
-    cFIP   = lgERA - (13 lgHR + 3 (lgBB + lgHBP) - 2 lgK) / lgIP
-    FIP    = (13 HR + 3 (BB + HBP) - 2 K) / IP + cFIP
-    FIPR9  = FIP + (lgRA9 - lgERA)                        FIP on the runs-allowed scale
-    dRPW   = (((18 - IP/G) lgFIPR9 + (IP/G) FIPR9) / 18 + 2) x 1.5   runs per win, per pitcher
-    WPGAA  = (lgFIPR9 - FIPR9) / dRPW                     wins per game above average
-    repl   = 0.03 (1 - GS/G) + 0.12 (GS/G)                replacement level, by role
-    WAR    = (WPGAA + repl) x IP / 9
-    then + one league-wide constant per inning so the season's pitcher WAR
-    totals config.TOTAL_PITCHER_WAR (430 = FanGraphs' 43% of 1,000 WAR).
+How it works ("lg" = the whole league's totals that season; IP = innings pitched, G = games, GS = games started):
+    1. FIP (fielding independent pitching) = (13 x HR + 3 x (BB + HBP) - 2 x K) / IP + cFIP, where the league
+       constant cFIP = lgERA - (13 lgHR + 3 (lgBB + lgHBP) - 2 lgK) / lgIP makes the league's FIP equal its ERA.
+    2. Move it to the runs-allowed scale: FIPR9 = FIP + (lgRA9 - lgERA) (RA9 = all runs allowed per 9 innings).
+    3. Runs per win for this pitcher: dRPW = (((18 - IP/G) lgFIPR9 + (IP/G) FIPR9) / 18 + 2) x 1.5 (about 9-10).
+    4. Wins above average per 9 innings: WPGAA = (lgFIPR9 - FIPR9) / dRPW.
+    5. Add replacement level, repl = 0.03 (1 - GS/G) + 0.12 (GS/G) (higher for starters), multiply by IP / 9,
+       then add one league-wide amount per inning so the season's pitchers total config.TOTAL_PITCHER_WAR (430).
+Not included: ballpark adjustments, the American/National League split, and the bonus for relievers who pitch in
+close games (leverage), so closers look less valuable than on FanGraphs.
 
-League values are MLB-wide (every pitcher, position players included),
-lgFIPR9 = the league's FIPR9 = lgRA9 (FIP is constructed to average lgERA).
+Inputs: /api/v1/stats?stats=season&group=pitching (cached in data/raw/mlb_api/season_stats/); a traded pitcher's
+lines are summed by player id. Outputs: data/results/war_calibration/fip_war_<season>.csv.
 
-Not included (limitations): park factors, the AL/NL split, and the reliever
-leverage adjustment -- so Coors pitchers are undervalued, pitcher-park pitchers
-overvalued, and closers/high-leverage relievers are undervalued relative to
-FanGraphs.
-
-Data: /api/v1/stats?stats=season&group=pitching&playerPool=All&gameType=R,
-paged, cached to data/raw/mlb_api/season_stats/. A traded pitcher comes back
-as one combined row (numTeams > 1), but rows are still summed by player id.
-
-    python -m analysis.fip_war                 # 2023-2025 (config.CALIBRATION_SEASONS)
-    python -m analysis.fip_war --season 2025
+    python -m analysis.fip_war [--season 2025]   (default: config.CALIBRATION_SEASONS)
 """
 import argparse
 import json
@@ -40,7 +32,7 @@ from config import CALIBRATION_SEASONS, STARTER_GS_SHARE, TOTAL_PITCHER_WAR
 from analysis.injury_history import API_BASE, _get_json
 from analysis.utils import SEASON_STATS_DIR, WAR_CALIBRATION_DIR
 
-PAGE_SIZE = 500
+PAGE_SIZE = 500   # API rows per request
 COUNT_COLUMNS = ["outs", "gamesPlayed", "gamesPitched", "gamesStarted", "battersFaced", "strikeOuts",
                  "baseOnBalls", "hitByPitch", "homeRuns", "runs", "earnedRuns"]
 OUT_COLUMNS = [
@@ -50,11 +42,12 @@ OUT_COLUMNS = [
 
 
 def fip_war_path(season: int):
+    """data/results/war_calibration/fip_war_<season>.csv."""
     return WAR_CALIBRATION_DIR / f"fip_war_{season}.csv"
 
 
 def innings_to_float(ip) -> float:
-    """MLB "45.2" = 45 and 2/3 innings (the digit after the point is outs)."""
+    """Innings as a number: MLB writes 45 2/3 innings as "45.2" (the digit after the point counts outs)."""
     whole, _, outs = str(ip).partition(".")
     return int(whole or 0) + int(outs or 0) / 3
 
@@ -80,7 +73,7 @@ def fetch_season_pitching(season: int, force_refresh: bool = False) -> list[dict
 
 
 def season_lines(season: int, force_refresh: bool = False) -> pd.DataFrame:
-    """One row per pitcher-season (stints for traded pitchers combined): counting stats + IP."""
+    """One row per pitcher for the season (a traded pitcher's teams combined): counting stats and IP."""
     rows = []
     for split in fetch_season_pitching(season, force_refresh):
         stat = split["stat"]
@@ -99,15 +92,14 @@ def season_lines(season: int, force_refresh: bool = False) -> pd.DataFrame:
         "gamesStarted": "GS", "battersFaced": "BF", "strikeOuts": "K", "baseOnBalls": "BB",
         "hitByPitch": "HBP", "homeRuns": "HR", "runs": "R", "earnedRuns": "ER",
     })
-    # G = games pitched; the pitching group's gamesPlayed is the same number for everyone but
-    # two-way players, whose gamesPlayed can count games they only hit in
+    # G = games pitched (gamesPlayed can also count games a two-way player only batted in)
     out["G"] = out["gamesPitched"].where(out["gamesPitched"] > 0, out["gamesPlayed"])
     out["Season"] = season
     return out
 
 
 def league_values(lines: pd.DataFrame) -> dict:
-    """MLB-wide lgIP, lgERA, lgRA9, cFIP, lgFIPR9 for one season."""
+    """League totals for one season: lgIP, lgERA, lgRA9, cFIP and lgFIPR9 (which equals lgRA9 by construction)."""
     lg = lines[["IP", "HR", "BB", "HBP", "K", "ER", "R"]].sum()
     lg_era = 9 * lg["ER"] / lg["IP"]
     lg_ra9 = 9 * lg["R"] / lg["IP"]
@@ -117,7 +109,7 @@ def league_values(lines: pd.DataFrame) -> dict:
 
 
 def fip_war_from_rate(fipr9, ip, ip_per_g, gs_share, lg: dict):
-    """WAR before the per-inning scaling constant, from FIPR9, IP, IP/G and GS/G (also used for projections)."""
+    """Steps 3-5: (dRPW, WPGAA, replacement level, WAR before the per-inning constant); also used for projections."""
     d_rpw = (((18 - ip_per_g) * lg["lgFIPR9"] + ip_per_g * fipr9) / 18 + 2) * 1.5
     wpgaa = (lg["lgFIPR9"] - fipr9) / d_rpw
     replacement = 0.03 * (1 - gs_share) + 0.12 * gs_share
@@ -125,19 +117,22 @@ def fip_war_from_rate(fipr9, ip, ip_per_g, gs_share, lg: dict):
 
 
 def compute_fip_war(season: int, force_refresh: bool = False) -> tuple[pd.DataFrame, dict]:
-    """(one row per pitcher with FIP, FIPR9 and WAR, league values incl. the per-inning WAR constant)."""
+    """(one row per pitcher with FIP, FIPR9 and WAR; league values including the per-inning WAR constant)."""
     lines = season_lines(season, force_refresh)
     lg = league_values(lines)
+    # 1-2. FIP, then FIP on the runs-allowed scale
     df = lines.copy()
     has_ip = df["IP"] > 0
     ip = df["IP"].where(has_ip)
     df["FIP"] = (13 * df["HR"] + 3 * (df["BB"] + df["HBP"]) - 2 * df["K"]) / ip + lg["cFIP"]
     df["FIPR9"] = df["FIP"] + (lg["lgRA9"] - lg["lgERA"])
     df["GSShare"] = (df["GS"] / df["G"]).where(df["G"] > 0, 0.0)
+    # 3-5. Runs per win, wins above average, replacement level
     df["dRPW"], df["WPGAA"], df["ReplacementLevel"], df["WAR_unscaled"] = fip_war_from_rate(
         df["FIPR9"], df["IP"], df["IP"] / df["G"].where(df["G"] > 0), df["GSShare"], lg)
     df["WAR_unscaled"] = df["WAR_unscaled"].where(has_ip, 0.0)   # no outs recorded: no rate, no WAR
 
+    # 5. One league-wide amount per inning so every pitcher's WAR adds up to TOTAL_PITCHER_WAR
     lg["WARPerInning"] = (TOTAL_PITCHER_WAR - df["WAR_unscaled"].sum()) / df["IP"].sum()
     df["WAR"] = df["WAR_unscaled"] + lg["WARPerInning"] * df["IP"]
     df["Role"] = np.where(df["GSShare"] >= STARTER_GS_SHARE, "starter", "reliever")
@@ -158,6 +153,7 @@ def load_league_values(season: int) -> dict:
 
 
 def run(seasons: list[int] | None = None, force_refresh: bool = False, top: int = 20) -> dict[int, pd.DataFrame]:
+    """{season: FIP-WAR table} for each season, each saved and summarized on screen."""
     out = {}
     for season in seasons or CALIBRATION_SEASONS:
         df, lg = compute_fip_war(season, force_refresh)

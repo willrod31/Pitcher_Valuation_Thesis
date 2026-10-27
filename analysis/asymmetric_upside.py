@@ -1,39 +1,26 @@
 """
-Asymmetric Upside Index.
+Upside Index: whether a pitcher's pitch quality is better than his command.
 
-Flags pitchers with elite Stuff+ but poor results explained by command, not
-shape: Index = z(Stuff+) - z(Location+) by default (config.COMMAND_METRIC =
-"location_plus"; run analysis/location_plus_proxy.py first). Location+ uses
-only location and count, Stuff+ only pitch shape, so the two don't overlap.
-config.COMMAND_METRIC = "legacy" switches back to the original Command Proxy,
-which is always kept as CommandProxyLegacy for comparison.
+Basically the Upside Index compares how good a pitcher's pitches are (Stuff+) with how well he aims them
+(Location+). A high number means his pitches are already good and his command is what holds him back. Command is usually
+easier to coach than raw pitch quality, so if you have the right procedures in place to fix them, these pitchers can be bargains.
 
-Also flags pitch-mix inefficiency: a pitcher whose best-performing pitch
-(by Stuff+) isn't their most-thrown pitch is leaving upside on the table by
-usage alone, independent of command.
+How it works:
+    1. Turn both grades into z-scores (how many typical steps from average) against qualified pitchers
+       (config.MIN_PITCHES_FOR_INCLUSION pitches). The small-sample versions are used, but the average and
+       spread always come from the qualified pitchers' unadjusted grades, so small samples move no one else.
+    2. Upside = z(Stuff+) - z(Location+). Example: Stuff+ 120 (z = +2) and Location+ 90 (z = -1) -> Upside = +3.
+    3. Pitch mix flag: his most-thrown pitch is not his best Stuff+ pitch (a pitch type needs 25+ swings to count
+       as "best"), a fix that needs only a change in usage.
+Also kept for comparison: the legacy command proxy, z(Edge%) - z(Meatball%) - z(BB%) (edge-of-zone rate,
+down-the-middle rate, walk rate), with each rate's small-sample version. config.COMMAND_METRIC picks which
+command measure is used ("location_plus" by default).
 
-Legacy Command Proxy note: Location+ (the proprietary one) is proprietary, and Statcast has no intended
-target, so command can't be measured directly. This proxy instead scores
-*zone discipline*: how often a pitcher works the edge of the zone (skill)
-vs. the heart of the plate (mistake), plus walk rate. It's a stand-in for
-command, not a measurement of it -- see README "Known limitations".
+Inputs: the Stuff+ and Location+ league tables (run those files first), the league-wide Statcast season,
+data/results/stabilization.csv. Outputs: data/results/asymmetric_upside.parquet (league-wide; --team only
+filters what is printed).
 
-Grading is always league-wide: Stuff+, Command Proxy and the index are
-z-scored against every qualified MLB pitcher, pulled one month at a time via
-load_season_monthly() (a single full-season pull OOMs on an 8GB machine).
---team only filters the printed output afterwards, so a Pirates pitcher is
-compared to the league, not to the rest of the Pirates staff.
-
-Small samples: every pitcher with config.MIN_PITCHES_TO_DISPLAY+ pitches gets
-a row (Qualified = False under config.MIN_PITCHES_FOR_INCLUSION). Edge%,
-Meatball% and BB% get *_Reg columns regressed toward the qualified pool's mean
-(analysis/stabilization.py); Stuff+ and Location+ come in already regressed
-(Stuff+ as StuffPlus_Final: regressed, then shrunk toward 100 by its
-comparability -- see stuff_plus_proxy.py).
-Every z-score uses the QUALIFIED pool's mean and SD, so small samples don't
-move anyone else's grade. AsymmetricUpsideIndex uses raw values,
-AsymmetricUpsideIndex_Reg the regressed ones; config.USE_REGRESSED picks
-which one downstream modules use (both are always saved).
+    python -m analysis.asymmetric_upside [--team PIT] [--refresh]
 """
 import argparse
 
@@ -50,31 +37,32 @@ from config import COMMAND_METRIC, END_DATE, MIN_PITCHES_FOR_INCLUSION, MIN_PITC
 
 if COMMAND_METRIC not in ("location_plus", "legacy"):
     raise ValueError(f'config.COMMAND_METRIC must be "location_plus" or "legacy", not {COMMAND_METRIC!r}')
-# The command column every downstream module uses (higher = better command either way).
+# The aim (command) column every later module uses; higher = better aim either way
 COMMAND_COLUMN = "LocationPlus" if COMMAND_METRIC == "location_plus" else "CommandProxyLegacy"
-# Raw or regressed (config.USE_REGRESSED) -- what risk_adjusted_value.py / the dashboard read.
+# Unadjusted or small-sample ("_Reg") columns, per config.USE_REGRESSED: what risk_adjusted_value.py and the dashboard read
 REG = "_Reg" if USE_REGRESSED else ""
-# Stuff+: StuffPlus_Final = regressed AND shrunk by comparability (stuff_plus_proxy.add_final)
+# Stuff+: StuffPlus_Final = small-sample adjusted AND pulled toward 100 for unusual pitches (stuff_plus_proxy.add_final)
 STUFF_COLUMN_USED = "StuffPlus_Final" if USE_REGRESSED else "StuffPlus_Scaled"
 COMMAND_COLUMN_USED = COMMAND_COLUMN + REG
 UPSIDE_COLUMN_USED = "AsymmetricUpsideIndex" + REG
 
 OUT_PATH = RESULTS_DIR / "asymmetric_upside.parquet"
 
-# Stuff+ training columns plus what the Command Proxy needs.
+# Stuff+'s training columns plus what the legacy command proxy needs
 RAW_COLUMNS = RAW_TRAIN_COLUMNS + ["plate_x", "plate_z", "sz_top", "sz_bot", "events"]
 
 PLATE_HALF_WIDTH_FT = 17 / 2 / 12  # rulebook plate width, in feet, halved
 
-EDGE_BAND = (0.8, 1.2)   # normalized zone-distance band counted as "edge"
-MEATBALL_MAX = 0.4       # normalized zone-distance below this counted as "meatball"
+EDGE_BAND = (0.8, 1.2)   # zone distance counted as "edge" (1 = the edge of the strike zone)
+MEATBALL_MAX = 0.4       # zone distance below this counted as "meatball" (down the middle)
 
 
 def classify_zone_location(df: pd.DataFrame) -> pd.DataFrame:
-    """Add a normalized Chebyshev distance from the center of the zone.
+    """One row per located pitch: its zone distance and whether it is on the edge or down the middle.
 
-    0 = dead center, 1 = rulebook zone boundary, >1 = outside the zone.
-    Vertical bounds use each pitch's own sz_top/sz_bot (per-batter stance).
+    Zone distance = the larger of the sideways and up-down distances from the middle of the zone, each divided
+    by half the zone's width or height: 0 = dead center, 1 = the edge of the strike zone, more than 1 = outside.
+    Height uses each batter's own strike zone top and bottom.
     """
     df = df.dropna(subset=["plate_x", "plate_z", "sz_top", "sz_bot"])
 
@@ -94,11 +82,11 @@ def classify_zone_location(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_command_proxy(df: pd.DataFrame, qualified_ids) -> pd.DataFrame:
-    """Per-pitcher Command Proxy: edge-hitting and avoiding the middle of the plate, less walks.
+    """One row per pitcher: the legacy command proxy, z(Edge%) - z(Meatball%) - z(BB%), and its parts.
 
-    z-scores use the qualified pitchers' mean/SD. Also adds EdgePct_Reg /
-    MeatballPct_Reg (n = located pitches) and BBPct_Reg (n = PA), each
-    regressed toward the qualified mean, and CommandProxy_Reg built from them.
+    z-scores use the qualified pitchers' average and spread. Also adds EdgePct_Reg / MeatballPct_Reg
+    (n = located pitches) and BBPct_Reg (n = plate appearances), each pulled toward the qualified average, and
+    CommandProxy_Reg built from them.
     """
     located = classify_zone_location(df)
 
@@ -119,7 +107,7 @@ def compute_command_proxy(df: pd.DataFrame, qualified_ids) -> pd.DataFrame:
     per_pitcher["CommandProxy"] = sum(sign * zscore_vs(per_pitcher[m], pool[m]) for m, sign in parts)
     for metric, n_col in [("EdgePct", "Pitches"), ("MeatballPct", "Pitches"), ("BBPct", "PA")]:
         k = load_k(metric)
-        observed = per_pitcher[metric].fillna(pool[metric].mean())  # 0 PA -> league mean
+        observed = per_pitcher[metric].fillna(pool[metric].mean())  # no plate appearances: use the league average
         per_pitcher[f"{metric}_Reg"] = regress(observed, per_pitcher[n_col], k, pool[metric].mean())
         per_pitcher[f"{metric}_Reliability"] = reliability(per_pitcher[n_col], k).round(3)
     per_pitcher["CommandProxy_Reg"] = sum(sign * zscore_vs(per_pitcher[f"{m}_Reg"], pool[m]) for m, sign in parts)
@@ -127,12 +115,10 @@ def compute_command_proxy(df: pd.DataFrame, qualified_ids) -> pd.DataFrame:
 
 
 def compute_pitch_mix(df: pd.DataFrame, stuff_summary: pd.DataFrame) -> pd.DataFrame:
-    """Best-performing pitch (by Stuff+) vs. most-thrown pitch, per pitcher.
+    """Step 3: one row per pitcher with his most-thrown pitch, his best Stuff+ pitch and the pitch mix flag.
 
-    Best = the highest per-type StuffPlus_Final (z within the pitch type,
-    regressed and shrunk by comparability -- not the raw ratio). Candidates
-    need MIN_SAMPLE_FOR_SUMMARY_V1 (25) scored swings, the same bar as before
-    small samples were kept, so a 15-pitch pitch type can't be "best" by noise.
+    Best = the highest per-type StuffPlus_Final (graded within its pitch type). A pitch type needs
+    MIN_SAMPLE_FOR_SUMMARY_V1 (25) swings to count, so a rarely thrown pitch can't be "best" by luck.
     """
     usage = (
         df.groupby(["pitcher", "pitch_type"]).size()
@@ -152,11 +138,12 @@ def compute_pitch_mix(df: pd.DataFrame, stuff_summary: pd.DataFrame) -> pd.DataF
 
 
 def run(team: str | None = None, force_refresh: bool = False):
+    """Grade the league, then print one team (or the league top 20)."""
     show(grade_league(force_refresh=force_refresh), team)
 
 
 def grade_league(force_refresh: bool = False, df: pd.DataFrame | None = None) -> pd.DataFrame:
-    """League-wide upside table, saved to OUT_PATH. Pass `df` (load_season_monthly with RAW_COLUMNS) to reuse a loaded frame."""
+    """The league-wide upside table, also saved to OUT_PATH. Pass `df` (load_season_monthly with RAW_COLUMNS) to reuse a loaded frame."""
     for path, module in [(LOCATION_PITCHER_PATH, "location_plus_proxy"), (STUFF_PITCHER_PATH, "stuff_plus_proxy")]:
         if not path.exists():
             raise FileNotFoundError(f"{path} not found -- run `python -m analysis.{module}` first.")
@@ -173,6 +160,7 @@ def grade_league(force_refresh: bool = False, df: pd.DataFrame | None = None) ->
     print(f"{len(qualified_ids)} qualified pitchers league-wide (grading pool); "
           f"{df['pitcher'].nunique()} with {MIN_PITCHES_TO_DISPLAY}+ pitches get a row")
     command = compute_command_proxy(df, qualified_ids)
+    # 3. Pitch mix flag
     mix = compute_pitch_mix(df, stuff_summary)
 
     stuff_cols = ["PitcherId", "Pitcher", "PitcherTeam", "p_throws", "StuffPlus", "StuffPlus_Scaled", "StuffPlus_Scaled_Reg",
@@ -191,6 +179,7 @@ def grade_league(force_refresh: bool = False, df: pd.DataFrame | None = None) ->
     out.insert(3, "Qualified", out["PitcherId"].isin(qualified_ids))
     out["CommandMetric"] = COMMAND_METRIC
 
+    # 1-2. z-scores against the qualified pitchers, then Upside = z(Stuff+) - z(Location+)
     pool = out[out["Qualified"]]
     out["AsymmetricUpsideIndex"] = (zscore_vs(out["StuffPlus_Scaled"], pool["StuffPlus_Scaled"])
                                     - zscore_vs(out[COMMAND_COLUMN], pool[COMMAND_COLUMN]))
@@ -198,7 +187,7 @@ def grade_league(force_refresh: bool = False, df: pd.DataFrame | None = None) ->
                                         - zscore_vs(out[COMMAND_COLUMN + "_Reg"], pool[COMMAND_COLUMN]))
     out = out.sort_values(UPSIDE_COLUMN_USED, ascending=False)
 
-    # Always save the league-wide table -- downstream z-scores need the full pool.
+    # Always save the whole league: later z-scores need the full pool
     out.to_parquet(OUT_PATH, index=False)
     print(f"Saved {len(out)} league-wide rows ({out['Qualified'].sum()} qualified) to {OUT_PATH}")
     return out

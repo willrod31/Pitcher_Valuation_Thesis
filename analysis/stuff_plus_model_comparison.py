@@ -1,34 +1,25 @@
 """
-Stuff+ whiff-model comparison: which model type should grade pitch shape?
+Which model type should Stuff+ use to predict swings and misses? Four candidates compared on pitchers they never saw.
 
-Same data (the config.SEASON league season), same features (mirrored for
-LHP), trained on swings, 5-fold GroupKFold by pitcher (the same folds for
-every model, stuff_plus_proxy.prepare_frame), scored out of fold:
+Before trusting Stuff+, I tried four ways of predicting a whiff (swing and miss) from a pitch's
+speed, movement and spin, and kept the one that predicted new pitchers best, by a rule written down in advance.
 
-    A  GradientBoostingClassifier per pitch type (100 trees, depth 3) -- the v2 model
-    B  Logistic regression per pitch type: standardized features + squared
-       velocity / IVB / HB (the simple baseline)
-    C  HistGradientBoostingClassifier per pitch type, tuned over
-       stuff_plus_proxy.HGB_GRID (max_depth 3/5, max_iter 100/300,
-       learning_rate 0.05/0.1) by an inner GroupKFold on the training folds only
-    D  like C, one model per pitch group (fastball / breaking / offspeed),
-       pitch type as a categorical feature
+How it works (config.SEASON's league season, lefties mirrored, trained on swings, 5 pitcher groups):
+    1. Fit and score each model out of fold (stuff_plus_proxy.prepare_frame gives every model the same groups):
+       A  gradient boosting per pitch type (100 trees, depth 3)
+       B  logistic regression per pitch type: scaled inputs plus squared speed, IVB and HB (the simplest)
+       C  histogram gradient boosting per pitch type, tuned on the training pitchers only
+       D  like C, one model per pitch group (fastball / breaking / offspeed) with the pitch type as an input
+    2. Score each on held-out swings: AUC (0.5 = coin flip, 1 = perfect ranking), log loss (lower = predicted
+       chances closer to what happened), Brier score, and log loss vs. a constant whiff rate; plus a calibration
+       check (predicted vs. actual whiff rate in 10 bins).
+    3. Rule fixed in advance: lowest overall log loss; within SELECTION_TOLERANCE of the best, the simpler model
+       wins (B < A < C < D). stuff_plus_proxy.STUFF_MODEL is then set to the winner by hand (it is B).
 
-Metrics on held-out swings, by pitch type and overall (swing-weighted):
-AUC, log loss, Brier score, log loss vs. a constant whiff rate per pitch type
-(the training folds' rate); plus a calibration check (predicted vs. actual
-whiff rate in 10 equal-count bins of predicted probability).
+Inputs: the league-wide Statcast season. Outputs: data/results/stuff_plus/model_comparison.csv,
+model_comparison_calibration.csv, model_comparison_tuning.csv, model_comparison_choice.json.
 
-Selection rule (fixed in advance): lowest overall out-of-fold log loss; if
-another model is within SELECTION_TOLERANCE of the best, the simpler one wins
-(B < A < C < D). stuff_plus_proxy.STUFF_MODEL is set to the winner by hand.
-
-    python -m analysis.stuff_plus_model_comparison
-    python -m analysis.stuff_plus_model_comparison --models B,A   (subset, for a quick look)
-
-Outputs (data/results/stuff_plus/): model_comparison.csv (by type + ALL),
-model_comparison_calibration.csv, model_comparison_tuning.csv,
-model_comparison_choice.json.
+    python -m analysis.stuff_plus_model_comparison [--models B,A]   (a subset, for a quick look)
 """
 import argparse
 import json
@@ -51,7 +42,7 @@ SELECTION_TOLERANCE = 0.001
 
 
 def choose(overall: pd.DataFrame) -> tuple[str, str]:
-    """The rule fixed in advance: lowest log loss; within SELECTION_TOLERANCE of it, the simplest model."""
+    """Step 3: (winner, reason) by the rule fixed in advance: lowest log loss; within SELECTION_TOLERANCE, the simplest."""
     loss = overall.set_index("Model")["LogLoss"]
     best = loss.idxmin()
     close = [m for m in MODEL_COMPLEXITY if m in loss.index and loss[m] - loss[best] <= SELECTION_TOLERANCE]
@@ -67,10 +58,12 @@ def choose(overall: pd.DataFrame) -> tuple[str, str]:
 
 
 def run(models: list[str]):
+    """(comparison table, winner) after steps 1-3 for `models`; also saves the four output files."""
     print(f"Loading league-wide Statcast {TRAIN_START} to {TRAIN_END} (month by month)...")
     df = prepare_frame(load_season_monthly(TRAIN_START, TRAIN_END, columns=RAW_TRAIN_COLUMNS))
     print(f"{len(df)} pitches, {int(df.loc[df['Eligible'], 'SwingOrNot'].sum())} swings on scored pitch types")
 
+    # 1-2. Fit, score out of fold and measure each model
     tables, calibration, tuning = [], [], []
     for key in models:
         start = time.time()
@@ -87,6 +80,7 @@ def run(models: list[str]):
     comparison = pd.concat(tables, ignore_index=True)
     comparison.insert(1, "Season", SEASON)
     calibration = pd.concat(calibration, ignore_index=True)
+    # 3. Pick the winner by the rule fixed in advance
     overall = comparison[comparison["PitchType"] == "ALL"]
     winner, reason = choose(overall)
 
@@ -104,6 +98,7 @@ def run(models: list[str]):
 
 
 def print_tables(comparison: pd.DataFrame, calibration: pd.DataFrame, tuning: list[dict]):
+    """Print the overall and per-pitch-type comparison, the calibration bins and the tuned settings."""
     overall = comparison[comparison["PitchType"] == "ALL"].drop(columns=["PitchType", "Season"])
     print(f"\n── Overall (held-out swings, swing-weighted over pitch types) ──")
     print(overall.round({"WhiffRate": 4, "AUC": 4, "LogLoss": 5, "Brier": 5, "BaselineLogLoss": 5,

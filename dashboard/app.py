@@ -1,4 +1,11 @@
-# Entry point (Streamlit Community Cloud runs this file): page config, the shared Season selector, navigation
+"""
+The dashboard's entry point: page settings, the shared Season selector, and navigation between the three pages.
+
+How it works: sets the page title and wide layout, registers Home (home.py), Dashboard (pitchers.py) and League
+(league.py), draws the Season selector at the top of the sidebar (season.py), then runs the chosen page.
+
+Inputs: dashboard/data/. Run with: streamlit run dashboard/app.py (Streamlit Community Cloud runs this file).
+"""
 import sys
 from pathlib import Path
 

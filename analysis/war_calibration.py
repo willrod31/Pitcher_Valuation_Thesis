@@ -1,57 +1,33 @@
 """
-WAR projection calibrated against real results (FIP-WAR, analysis/fip_war.py).
+Projected WAR: each pitcher's expected value next season, fitted on what really happened season to season.
 
-Replaces the placeholder ProjectedWAR = 2.0 + 1.5 x [z(Stuff+) + z(Location+)]
-with next-season FIP-WAR split into a RATE (how good per inning, FIPR9) and
-PLAYING TIME (how many innings), each fitted on real season-to-season pairs.
+In simple terms: projected WAR is our estimate of how many extra wins a pitcher will give his team next season:
+how well he should pitch, times how much he should pitch.
 
-Data: one row per pitcher x pair (t, t + 1), t in config.CALIBRATION_SEASONS
-(the last season has no t + 1 yet -- it's what gets projected). Every pitcher
-with config.MIN_PITCHES_TO_DISPLAY+ Statcast pitches in t is a row; one who
-didn't pitch in t + 1 gets IP = 0 and WAR = 0 (that's how injury and failure
-show up), never dropped.
+Data: one row per pitcher per season pair (t, t + 1) from config.CALIBRATION_SEASONS, every pitcher with
+config.MIN_PITCHES_TO_DISPLAY+ pitches in t. One who didn't pitch in t + 1 stays in with 0 innings and 0 WAR
+(that is how injury and losing a job show up). FIPR9 = runs allowed per 9 innings from FIP (fip_war.py).
+How it works:
+    1. Rate model (weighted least squares, WLS: a regression where pitchers with more innings next season count
+       more): next season's FIPR9 from this season's FIPR9 (pulled toward the league by 40 innings), K-BB%
+       (strikeout rate minus walk rate), Stuff+, Location+ and role (starter = 1). Feature sets R0-R4
+       (RATE_MODELS) are compared.
+    2. Innings model (ordinary least squares, OLS, starters and relievers separately): next season's innings
+       from this season's innings, age, injury risk and volatility; never below 0.
+    3. Plug projected FIPR9 and innings into the FIP-WAR formula (his own GS/G and IP/G, this season's league).
+    4. Test: fit on the first pair, test on the second, a season the model never saw. Rule fixed in advance:
+       R4 (adds risk) if its test error beats R3's, else R3. Then refit on both pairs and project forward.
+       Test error (RMSE, typical size of a miss): 0.90 WAR, vs 2.13 for the old formula and 0.99 for "same as
+       last year" (data/results/war_calibration/model_comparison.csv).
+Later seasons (2026 on) are never refit: project_frozen applies config.FROZEN_WAR_MODEL. Past seasons
+(config.PAIR_MODEL_FOR_SEASON) use a model fit on one pair that never saw the season being projected
+(project_pair_model; save_pair_models refits and checks those single-pair fits before saving them).
 
-    features (season t): StuffPlus (StuffPlus_Final), LocationPlus (LocationPlus_Reg),
-        UpsideIndex (AsymmetricUpsideIndex_Reg), VolatilityScore_Reg (within role; blank = 0,
-        the qualified pool mean), InjuryRiskScore (config.INJURY_LOOKBACK_SEASONS ending t),
-        Starter (GS/G >= config.STARTER_GS_SHARE), Age on July 1 of t + 1, IP,
-        FIPR9_reg = (IP x FIPR9 + 40 x lgFIPR9) / (IP + 40), KminusBBPct = (K - BB) / BF,
-        LegacyProjectedWAR (the old formula, for R0)
-    targets (season t + 1): FIPR9_next, IP_next, WAR_next
+Inputs: each season's results tables (run_all --season), fip_war_<season>.csv, MLB API birth dates.
+Outputs: data/results/war_calibration/ (calibration_rows, model_comparison, coefficients, backtest,
+chosen_model.json, pair_models.json, projections_<season>.csv).
 
-Rate model: WLS on FIPR9_next (weights IP_next, rows with
-config.MIN_IP_FOR_RATE_MODEL+ IP_next), feature sets R0-R4 (RATE_MODELS).
-Playing-time model: OLS on IP_next, all rows, starters and relievers
-separately (PT_FEATURES), predictions clipped at 0.
-
-Test: fit on the first pair, test on the second. Selection rule (fixed before
-looking): R4 if its test RMSE beats R3's, else R3. Final fit: both pairs
-pooled, then the last season's features project the next season. Projected
-WAR = the FIP-WAR formula with projected FIPR9 and IP, the last season's
-league values and the pitcher's own last-season GS/G and IP/G.
-
-Backtest (for the breakout view): each pair projected out of sample by the
-model fitted on the OTHER pair.
-
-Frozen model (project_frozen): a season after the calibration seasons (2026)
-is never added as a pair and nothing is refit, retuned or reselected on it.
-Its next-season projection applies the exact coefficients in
-config.FROZEN_WAR_MODEL (results_frozen/war_model_2025.json: the chosen rate
-model and both playing-time models) to that season's features, the same way
-war_projection does, and writes projections_<season + 1>.csv.
-
-Single-pair models (pair_models.json): the backtest fits above -- the chosen
-rate model and both playing-time models fit on ONE pair -- saved so past
-seasons can be projected out of sample (project_pair_model,
-config.PAIR_MODEL_FOR_SEASON): 2022 and 2024 use the 2023->2024 fit, 2023 the
-2024->2025 fit. save_pair_models() refits exactly what backtest() fits, from
-the saved calibration_rows.csv, and checks it reproduces backtest.csv and the
-2023->2024 rows of coefficients.csv before writing; nothing new is selected.
-
-    python -m analysis.war_calibration
-    python -m analysis.war_calibration --frozen 2026
-    python -m analysis.war_calibration --save-pair-models
-    python -m analysis.war_calibration --pair-model 2022
+    python -m analysis.war_calibration [--frozen 2026 | --save-pair-models | --pair-model 2022]
 """
 import argparse
 import json
@@ -80,9 +56,11 @@ PAIR_MODELS_PATH = WAR_CALIBRATION_DIR / "pair_models.json"
 
 
 def projections_path(projected_season: int):
+    """data/results/war_calibration/projections_<projected_season>.csv."""
     return WAR_CALIBRATION_DIR / f"projections_{projected_season}.csv"
 
 
+# Rate model feature sets (step 1); R0 is the old placeholder formula, kept as a baseline
 RATE_MODELS = {
     "R0": ["LegacyProjectedWAR"],
     "R1": ["FIPR9_reg", "KminusBBPct"],
@@ -94,9 +72,9 @@ RATE_LABELS = {
     "R0": "old formula (ProjectedWAR)", "R1": "results only", "R2": "talent only",
     "R3": "talent + results", "R4": "talent + results + risk",
 }
-PT_FEATURES = ["IP", "Age", "InjuryRiskScore", "VolatilityScore_Reg"]
+PT_FEATURES = ["IP", "Age", "InjuryRiskScore", "VolatilityScore_Reg"]   # innings model inputs (step 2)
 RISK_FEATURES = {"VolatilityScore_Reg", "InjuryRiskScore"}
-BREAKOUT_WAR_GAIN = 1.0
+BREAKOUT_WAR_GAIN = 1.0   # backtest: a "breakout" = next season's WAR at least this much above this season's
 
 
 # ── Data ─────────────────────────────────────────────────────────────────────
@@ -118,14 +96,14 @@ def fetch_birth_dates(ids) -> dict[int, str | None]:
 
 
 def season_features(season: int) -> pd.DataFrame:
-    """One row per pitcher with MIN_PITCHES_TO_DISPLAY+ pitches in `season`: Statcast metrics + FIP line."""
+    """One row per pitcher with MIN_PITCHES_TO_DISPLAY+ pitches in `season`: his metrics and his FIP line."""
     folder = season_results_dir(season)
     paths = {name: folder / name for name in ["asymmetric_upside.parquet", "volatility_discount.parquet", "injury_summary.csv"]}
     for path in paths.values():
         if not path.exists():
             raise FileNotFoundError(f"{path} not found -- run python -m analysis.run_all --season {season} first")
     upside = pd.read_parquet(paths["asymmetric_upside.parquet"])
-    upside = compute_projected_war(upside)   # the old formula, graded within this season
+    upside = compute_projected_war(upside)   # the old placeholder formula (rate model R0), graded within this season
     volatility = pd.read_parquet(paths["volatility_discount.parquet"])[["PitcherId", "VolatilityPath", "VolatilityScore_Reg"]]
     injury = pd.read_csv(paths["injury_summary.csv"])[["PitcherId", "TotalDaysMissed", "ArmILStints"]]
 
@@ -134,7 +112,7 @@ def season_features(season: int) -> pd.DataFrame:
         "PitcherTeam": "Team", "StuffPlus_Final": "StuffPlus", "LocationPlus_Reg": "LocationPlus",
         "AsymmetricUpsideIndex_Reg": "UpsideIndex", "simple_projected_war": "LegacyProjectedWAR"})
     df = df.merge(volatility, on="PitcherId", how="left").merge(injury, on="PitcherId", how="left")
-    df["VolatilityScore_Reg"] = df["VolatilityScore_Reg"].fillna(0.0)   # no path: qualified pool mean
+    df["VolatilityScore_Reg"] = df["VolatilityScore_Reg"].fillna(0.0)   # no volatility score: the pool average (0)
     df["InjuryDataPulled"] = df["TotalDaysMissed"].notna()
     df["InjuryRiskScore"] = injury_risk_score(df).fillna(0.0)
 
@@ -150,6 +128,7 @@ def season_features(season: int) -> pd.DataFrame:
     df["Starter"] = (df["GSShare"] >= STARTER_GS_SHARE).astype(int)
     df["Role"] = np.where(df["Starter"] == 1, "starter", "reliever")
     df["IPPerG"] = df["IP"] / df["G"]
+    # FIPR9 pulled toward the league by FIPR9_REGRESSION_IP innings: (IP x FIPR9 + 40 x lgFIPR9) / (IP + 40)
     df["FIPR9_reg"] = ((df["IP"] * df["FIPR9"].fillna(lg["lgFIPR9"]) + FIPR9_REGRESSION_IP * lg["lgFIPR9"])
                        / (df["IP"] + FIPR9_REGRESSION_IP))
     df["KminusBBPct"] = ((df["K"] - df["BB"]) / df["BF"]).where(df["BF"] > 0)
@@ -187,25 +166,28 @@ def build_rows(seasons: list[int] | None = None) -> pd.DataFrame:
 # ── Models ───────────────────────────────────────────────────────────────────
 
 def design(rows: pd.DataFrame, features: list[str]) -> pd.DataFrame:
-    """Constant + features as float (seasons concatenated with blank targets can leave object columns)."""
+    """The regression inputs: a constant column plus the features, as floats."""
     return sm.add_constant(rows[features].astype(float), has_constant="add")
 
 
 def rate_rows(rows: pd.DataFrame, features: list[str]) -> pd.DataFrame:
+    """Rows the rate model can use: MIN_IP_FOR_RATE_MODEL+ innings next season and every feature filled in."""
     return rows[(rows["IP_next"] >= MIN_IP_FOR_RATE_MODEL)].dropna(subset=features + ["FIPR9_next"])
 
 
 def fit_rate(rows: pd.DataFrame, features: list[str]):
+    """Step 1: WLS of next season's FIPR9 on `features`, weighted by next season's innings."""
     data = rate_rows(rows, features)
     return sm.WLS(data["FIPR9_next"].astype(float), design(data, features), weights=data["IP_next"].astype(float)).fit()
 
 
 def predict(model, rows: pd.DataFrame, features: list[str]) -> pd.Series:
+    """The fitted model's prediction for each row."""
     return pd.Series(np.asarray(model.predict(design(rows, features)), dtype=float), index=rows.index)
 
 
 def fit_playing_time(rows: pd.DataFrame) -> dict:
-    """{role: OLS on IP_next}, all rows (IP_next = 0 included)."""
+    """Step 2: {role: OLS of next season's innings}, on every row (0 innings next season included)."""
     models = {}
     for role, data in rows.dropna(subset=PT_FEATURES + ["IP_next"]).groupby("Role"):
         models[role] = sm.OLS(data["IP_next"].astype(float), design(data, PT_FEATURES)).fit()
@@ -213,6 +195,7 @@ def fit_playing_time(rows: pd.DataFrame) -> dict:
 
 
 def predict_playing_time(models: dict, rows: pd.DataFrame) -> pd.Series:
+    """Projected innings for each row from his role's innings model, never below 0."""
     out = pd.Series(np.nan, index=rows.index)
     for role, data in rows.groupby("Role"):
         complete = data.dropna(subset=PT_FEATURES)
@@ -221,17 +204,19 @@ def predict_playing_time(models: dict, rows: pd.DataFrame) -> pd.Series:
 
 
 def project_war(rows: pd.DataFrame, fipr9: pd.Series, ip: pd.Series, lg: dict) -> pd.Series:
-    """FIP-WAR formula on projected FIPR9 / IP, with the feature season's league values, GS/G and IP/G."""
+    """Step 3: the FIP-WAR formula on projected FIPR9 and innings, with this season's league values, GS/G and IP/G."""
     _, _, _, war = fip_war_from_rate(fipr9, ip, rows["IPPerG"], rows["GSShare"], lg)
     return war + lg["WARPerInning"] * ip
 
 
 def weighted_rmse(y, pred, w=None) -> float:
+    """Root mean squared error (the typical size of a miss), optionally weighted by w."""
     w = np.ones(len(y)) if w is None else np.asarray(w, dtype=float)
     return float(np.sqrt(np.sum(w * (np.asarray(y) - np.asarray(pred)) ** 2) / np.sum(w)))
 
 
 def coefficient_rows(model, name: str, fit_on: str) -> pd.DataFrame:
+    """One row per term of a fitted model: coefficient, standard error, t, p, n and R^2."""
     return pd.DataFrame({
         "Model": name, "FitOn": fit_on, "Term": model.params.index, "Coef": model.params.values,
         "SE": model.bse.values, "t": model.tvalues.values, "p": model.pvalues.values, "N": int(model.nobs),
@@ -240,12 +225,13 @@ def coefficient_rows(model, name: str, fit_on: str) -> pd.DataFrame:
 
 
 def pair_label(rows: pd.DataFrame) -> str:
+    """The season pairs in `rows`, e.g. "2023->2024 + 2024->2025"."""
     seasons = sorted(rows["Season"].unique())
     return " + ".join(f"{s}->{s + 1}" for s in seasons)
 
 
 def evaluate(train: pd.DataFrame, test: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, dict, dict]:
-    """(comparison table, training coefficients, rate models, playing-time models)."""
+    """Step 4: (test comparison table, training coefficients, rate models, innings models), fit on train, tested on test."""
     results, coefs, rate_models = [], [], {}
     fit_on = pair_label(train)
 
@@ -291,7 +277,7 @@ def choose_rate_model(comparison: pd.DataFrame) -> tuple[str, str]:
 
 
 def war_projection(rows: pd.DataFrame, rate_model, rate_features: list[str], pt_models: dict) -> pd.DataFrame:
-    """ProjectedFIPR9, ProjectedIP, ProjectedWAR for each row, league values from each row's own season."""
+    """Steps 1-3 applied: ProjectedFIPR9, ProjectedIP and ProjectedWAR for each row (league values from its own season)."""
     out = pd.DataFrame(index=rows.index)
     complete = rows.dropna(subset=rate_features)
     out["ProjectedFIPR9"] = predict(rate_model, complete, rate_features).reindex(rows.index)
@@ -305,7 +291,7 @@ def war_projection(rows: pd.DataFrame, rate_model, rate_features: list[str], pt_
 
 
 def war_comparison(test: pd.DataFrame, projected: pd.DataFrame, label: str) -> list[dict]:
-    """Next-season WAR: the calibrated projection vs. the old formula vs. same as last year."""
+    """Test rows comparing next-season WAR errors: this projection vs. the old formula vs. "same as last year"."""
     data = test.join(projected).dropna(subset=["ProjectedWAR"])
     rows = []
     for name, pred in [(label, data["ProjectedWAR"]), ("old formula (ProjectedWAR)", data["LegacyProjectedWAR"]),
@@ -319,7 +305,7 @@ def war_comparison(test: pd.DataFrame, projected: pd.DataFrame, label: str) -> l
 # ── Backtest (breakouts) ─────────────────────────────────────────────────────
 
 def backtest(rows: pd.DataFrame, chosen: str) -> pd.DataFrame:
-    """Each pair projected by the model fitted on the other pair(s) only (out of sample)."""
+    """Each pair projected by a model fit on the other pair(s) only (out of sample), with breakout flags."""
     features = RATE_MODELS[chosen]
     pairs = rows.dropna(subset=["WAR_next"])
     frames = []
@@ -344,6 +330,7 @@ def backtest(rows: pd.DataFrame, chosen: str) -> pd.DataFrame:
 
 
 def print_backtest(bt: pd.DataFrame):
+    """Print each backtest pair's breakout hits and misses."""
     cols = ["Pitcher", "Team", "Role", "StuffPlus", "LocationPlus", "UpsideIndex", "FIPWAR_t", "ProjectedWAR_next",
             "ActualWAR_next", "ActualIP_next"]
     for season, data in bt.groupby("Season"):
@@ -355,7 +342,7 @@ def print_backtest(bt: pd.DataFrame):
               f"hits {len(hits)}, misses {len(flagged) - len(hits)}; hit rate "
               f"{len(hits) / len(flagged):.1%}" if len(flagged) else "no pitchers flagged")
         print(f"base rate (all {len(data)} pitchers who gained {BREAKOUT_WAR_GAIN:.0f}+ WAR): {base:.1%}")
-        # a negative WAR_t "gains" WAR just by not pitching (0 IP = 0 WAR): say how many hits are only that
+        # a negative WAR this season "gains" WAR just by not pitching next season (0 IP = 0 WAR): count those hits
         empty = hits[hits["ActualIP_next"] < MIN_IP_FOR_RATE_MODEL]
         print(f"of the hits, {len(empty)} threw under {MIN_IP_FOR_RATE_MODEL} IP in {season + 1} (a negative WAR_{season} "
               f"rising toward 0 by not pitching, not a real breakout); flagged pitchers with WAR_{season} >= 0: "
@@ -372,12 +359,12 @@ def print_backtest(bt: pd.DataFrame):
 # ── Frozen model (seasons after the calibration seasons) ──────────────────────
 
 def frozen_model() -> dict:
-    """config.FROZEN_WAR_MODEL: chosen_rate_model, rate_features, pt_features and the final coefficients."""
+    """The frozen model (config.FROZEN_WAR_MODEL): chosen rate model, its features, the innings features, coefficients."""
     return json.loads((Path(__file__).resolve().parent.parent / FROZEN_WAR_MODEL).read_text())
 
 
 def linear(coefs: dict, rows: pd.DataFrame, features: list[str]) -> pd.Series:
-    """const + sum(coef x feature) with the frozen coefficients; blank where a feature is blank."""
+    """const + sum(coef x feature) with saved coefficients; blank where a feature is blank."""
     out = pd.Series(coefs["const"], index=rows.index, dtype=float)
     for f in features:
         out = out + coefs[f] * rows[f].astype(float)
@@ -385,11 +372,10 @@ def linear(coefs: dict, rows: pd.DataFrame, features: list[str]) -> pd.Series:
 
 
 def apply_model(season: int, meta: dict) -> pd.DataFrame:
-    """`season`'s features projected to season + 1 with fixed coefficients (meta as in war_model_2025.json) -- nothing is fit.
+    """`season`'s pitchers projected to season + 1 with saved coefficients (meta as in war_model_2025.json); nothing is fit.
 
-    Same steps as war_projection(): rate = the chosen rate model; innings =
-    the playing-time model for the pitcher's role, clipped at 0; WAR = the
-    FIP-WAR formula with `season`'s league values and his own GS/G and IP/G.
+    The same steps as war_projection(): 1. rate model, 2. innings model for his role (never below 0),
+    3. the FIP-WAR formula with `season`'s league values and his own GS/G and IP/G.
     """
     rate_name, rate_features, pt_features = meta["chosen_rate_model"], meta["rate_features"], meta["pt_features"]
     rows = add_age(season_features(season), season)
@@ -410,7 +396,7 @@ def apply_model(season: int, meta: dict) -> pd.DataFrame:
 
 
 def project_frozen(season: int) -> pd.DataFrame:
-    """projections_<season + 1>.csv from `season`'s features and the frozen model -- nothing is fit."""
+    """Projections for season + 1 from the frozen model (nothing is fit); also saved to projections_<season + 1>.csv."""
     meta = frozen_model()
     projections = apply_model(season, meta)
     projected_season = season + 1
@@ -424,16 +410,15 @@ def project_frozen(season: int) -> pd.DataFrame:
 # ── Single-pair models (past seasons, out of sample) ──────────────────────────
 
 def pair_name(first_season: int) -> str:
+    """"2023->2024" for 2023."""
     return f"{first_season}->{first_season + 1}"
 
 
 def save_pair_models() -> dict:
-    """PAIR_MODELS_PATH: the chosen rate model + playing-time models fit on each single calibration pair.
+    """The single-pair models (chosen rate model + innings models, each fit on ONE pair), also saved to PAIR_MODELS_PATH.
 
-    These are the fits backtest() makes (and, for the first pair, evaluate());
-    they were never saved, so they are refit here from the SAVED
-    calibration_rows.csv with the same functions, then checked against
-    backtest.csv (every projection) and coefficients.csv (the 2023->2024 rows)
+    These are the fits backtest() makes. They are refit here from the saved calibration_rows.csv with the same
+    functions, then checked against backtest.csv (every projection) and coefficients.csv (the 2023->2024 rows)
     before anything is written. No new pair, feature set or model choice.
     """
     chosen = json.loads(CHOSEN_MODEL_PATH.read_text())
@@ -446,7 +431,7 @@ def save_pair_models() -> dict:
     for first, train in pairs.groupby("Season"):
         rate, pt = fit_rate(train, features), fit_playing_time(train)
         label = pair_label(train)
-        # check 1: the same coefficients as coefficients.csv where that fit was saved (the evaluate() training pair)
+        # check 1: the same coefficients as coefficients.csv, where that fit was saved (the evaluate() training pair)
         for model_name, model in [(name, rate), *[(f"PT_{r}", m) for r, m in pt.items()]]:
             saved = saved_coefs[(saved_coefs["Model"] == model_name) & (saved_coefs["FitOn"] == label)]
             if not saved.empty:
@@ -481,7 +466,7 @@ def save_pair_models() -> dict:
 
 
 def pair_model(season: int) -> dict:
-    """The single-pair model that projects `season` (config.PAIR_MODEL_FOR_SEASON), with a plain-words note."""
+    """The single-pair model that projects `season` (config.PAIR_MODEL_FOR_SEASON), with a plain-words note added."""
     label = pair_name(PAIR_MODEL_FOR_SEASON[season])
     if not PAIR_MODELS_PATH.exists():
         raise FileNotFoundError(f"{PAIR_MODELS_PATH} not found -- run python -m analysis.war_calibration --save-pair-models")
@@ -492,7 +477,7 @@ def pair_model(season: int) -> dict:
         raise ValueError(f"the {label} model was fit on {season}->{projected} rows: it can't project {season} out of sample")
     if projected > target:
         seen = f"did not see {projected}"
-    else:   # projected == first: that season's stats were the training rows' INPUTS, never the answers it was fit to
+    else:   # projected == first: that season's stats were only the training rows' inputs, never the answers
         seen = f"never trained on {projected} results: {projected} stats were only inputs, its answers were {target}"
     meta.update({"projected_season": projected, "feature_season": season, "out_of_sample": True,
                  "note": f"Model trained on {label} only ({seen})"})
@@ -500,7 +485,7 @@ def pair_model(season: int) -> dict:
 
 
 def project_pair_model(season: int) -> pd.DataFrame:
-    """projections_<season + 1>.csv for a past season, from the single-pair model that never saw season + 1."""
+    """Projections for season + 1 of a past season, from the single-pair model that never saw season + 1 (also saved)."""
     meta = pair_model(season)
     projections = apply_model(season, meta)
     projected_season = season + 1
@@ -513,6 +498,7 @@ def project_pair_model(season: int) -> pd.DataFrame:
 # ── Run ──────────────────────────────────────────────────────────────────────
 
 def print_comparison(comparison: pd.DataFrame):
+    """Print the test comparison table, rounded, one block per target."""
     shown = comparison.copy()
     shown["TestRMSE"] = shown["TestRMSE"].round(3)
     shown["TestCorr"] = shown["TestCorr"].round(3)
@@ -523,6 +509,7 @@ def print_comparison(comparison: pd.DataFrame):
 
 
 def run(seasons: list[int] | None = None):
+    """The whole calibration: build rows, test (step 4), refit on every pair, project forward, backtest, save."""
     seasons = seasons or CALIBRATION_SEASONS
     if len(seasons) < 3:
         raise ValueError("Need at least three seasons: two (t, t + 1) pairs to fit and test, plus one to project from")
@@ -535,6 +522,7 @@ def run(seasons: list[int] | None = None):
               f"{(data['IP_next'] >= MIN_IP_FOR_RATE_MODEL).sum()} with {MIN_IP_FOR_RATE_MODEL}+ IP for the rate model; "
               f"{(data['Role'] == 'starter').sum()} starters, {(data['Role'] == 'reliever').sum()} relievers)")
 
+    # 4. Fit on the first pair, test on the second, pick the rate model by the rule fixed in advance
     train_season, test_season = sorted(pairs["Season"].unique())[:2]
     train, test = pairs[pairs["Season"] == train_season], pairs[pairs["Season"] == test_season]
     comparison, coefs, rate_models, pt_models = evaluate(train, test)
@@ -545,7 +533,7 @@ def run(seasons: list[int] | None = None):
     comparison.insert(0, "TestPair", f"{test_season}->{test_season + 1}")
     comparison.insert(0, "TrainPair", f"{train_season}->{train_season + 1}")
 
-    # final fit: every pair pooled, then project the season after the last one
+    # 1-3 again on every pair pooled, then project the season after the last one
     final_rate = fit_rate(pairs, RATE_MODELS[chosen])
     final_pt = fit_playing_time(pairs)
     pooled = pair_label(pairs)

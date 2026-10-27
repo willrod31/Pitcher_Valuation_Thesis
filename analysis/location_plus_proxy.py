@@ -1,41 +1,31 @@
 """
-Location+ proxy: command measured from pitch location and count ONLY.
+Location+: how well each pitcher aims, from where his pitches crossed the plate (100 = league average; higher is better).
 
-Mirrors stuff_plus_proxy.py from the other side -- Stuff+ sees only pitch
-shape (velo, movement, spin, extension, release), Location+ sees only where
-the pitch ended up and the count it was thrown in. Pitch shape is never a
-feature here, so Asymmetric Upside = z(Stuff+) - z(Location+) separates
-"the stuff is good" from "the location is the problem".
+Location+ measures whether he throws the ball to spots that are hard to hit for the situation
+(for example, close to the edge of the strike zone, the box over home plate between the batter's knees and chest,
+when he is ahead in the count). It uses only location and the count, and shares no inputs with Stuff+.
 
-Target (per pitch, pitcher's point of view, lower = better for the pitcher):
-delta_run_exp, except on balls in play, where it's replaced by an EXPECTED
-run value -- a league regression of delta_run_exp on xwOBA
-(estimated_woba_using_speedangle) + balls + strikes -- so batted-ball luck
-isn't credited or charged to command.
+How it works:
+    1. Normalize location. Sideways location is divided by half the plate width and flipped for left-handed
+       hitters (so "inside" is always the same side); height is measured against each batter's own strike zone.
+    2. Set the target: each pitch's run value (how much it changed the batting team's expected runs; lower is
+       better for the pitcher). On balls in play we use an EXPECTED run value from xwOBA (expected hitting
+       value from exit speed and launch angle), so a lucky bloop single or a line-drive out isn't credited to aim.
+    3. Train gradient-boosted trees (many small yes/no decision trees, each fixing the last one's mistakes) for
+       fastballs, breaking balls and offspeed pitches separately. Inputs: location, balls, strikes, and whether
+       pitcher and batter are on the same side.
+    4. Score out of fold, the same 5-group method (GroupKFold) as Stuff+.
+    5. Grade: average his predicted run value per pitch, flip the sign so higher = better, then 100 + 10 x z
+       against qualified pitchers (config.MIN_PITCHES_FOR_INCLUSION pitches).
+    6. Small samples: (pitches x Location+ + k x 100) / (pitches + k), k from analysis/stabilization.py (about 286
+       pitches: aim takes far longer than Stuff+ to become reliable).
+Limit: it can't see where the catcher wanted the ball, so it grades location, not whether he hit his spot.
 
-Features: norm_x (plate_x / half plate width, flipped for LHB so positive is
-always the same side of the batter), norm_z (height relative to the batter's
-own zone, same normalization as asymmetric_upside.classify_zone_location),
-balls, strikes, same_hand.
+Inputs: the league-wide Statcast season (analysis/data_acquisition.py), data/results/stabilization.csv.
+Outputs: data/results/location_plus/ (pitches, summaries, command_reliability.csv);
+dashboard/data/<SEASON>/location_plus_pitch_types.csv.
 
-One HistGradientBoostingRegressor per pitch group (fastball / breaking /
-offspeed), trained on every pitch league-wide. Predictions are out-of-fold
-(5-fold GroupKFold by pitcher), so a pitcher's own pitches never train the
-model that scores him.
-
-LocationPlus = 100 + 10 * z(-mean predicted run value), z against the
-league-wide qualified pool (config.MIN_PITCHES_FOR_INCLUSION pitches; per
-pitch type, config.MIN_PITCHES_PER_TYPE_FOR_SCALE and z within that pitch
-type). 100 = league average, 10 points = 1 SD, higher = better.
-
-LocationPlus_Reg regresses small samples toward 100 with the stabilization
-point k from analysis/stabilization.py: (n * LocationPlus + k * 100) / (n + k),
-LocationPlus_Reliability = n / (n + k). Blank under config.MIN_PITCHES_TO_DISPLAY
-pitches (per pitch type: config.MIN_PITCHES_PER_TYPE_TO_DISPLAY). The mean/SD
-behind LocationPlus itself still come from the qualified pool only.
-
-Location+ still can't see the catcher's target: it grades location quality
-given the count, not whether the pitcher hit his spot.
+    python -m analysis.location_plus_proxy [--team PIT | --pitcher "Paul Skenes"] [--refresh]
 """
 import argparse
 from pathlib import Path
@@ -60,9 +50,8 @@ PITCHER_PATH = LOCATION_PLUS_DIR / "location_plus_pitcher.parquet"
 RELIABILITY_PATH = LOCATION_PLUS_DIR / "command_reliability.csv"
 DASHBOARD_PATH = DASHBOARD_DATA_DIR / "location_plus_pitch_types.csv"   # dashboard/data/<SEASON>/
 
-# release_speed/spin/extension/pfx are loaded ONLY because load_season_monthly's
-# shared cleaning step filters on them (same pitch pool as Stuff+) -- they are
-# never model features.
+# release_speed / spin / extension / pfx are loaded only because load_season_monthly's shared cleaning step
+# filters on them (so the pitch pool matches Stuff+'s); they are never model inputs.
 RAW_COLUMNS = [
     "pitcher", "pitch_type", "plate_x", "plate_z", "sz_top", "sz_bot",
     "balls", "strikes", "stand", "p_throws", "type", "description", "events",
@@ -80,9 +69,10 @@ PITCH_GROUPS = {
 PITCH_TO_GROUP = {p: g for g, types in PITCH_GROUPS.items() for p in types}
 
 FEATURES = ["norm_x", "norm_z", "balls", "strikes", "same_hand"]
-N_FOLDS = 5
-PLATE_HALF_WIDTH_FT = 17 / 2 / 12
+N_FOLDS = 5                        # out-of-fold groups of pitchers (step 4)
+PLATE_HALF_WIDTH_FT = 17 / 2 / 12  # home plate is 17 inches wide: half of it, in feet
 
+# Pitch results that count as a strike for first-pitch strike rate
 STRIKE_OR_CONTACT = {
     "called_strike", "swinging_strike", "swinging_strike_blocked", "foul", "foul_tip",
     "foul_bunt", "missed_bunt", "bunt_foul_tip", "hit_into_play",
@@ -90,13 +80,16 @@ STRIKE_OR_CONTACT = {
 
 
 def add_location_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Step 1: the pitches with norm_x, norm_z (location against the plate and his zone) and same_hand added."""
     df = df.copy()
     df["PitchGroup"] = df["pitch_type"].map(PITCH_TO_GROUP)
     df = df.dropna(subset=["PitchGroup", "plate_x", "plate_z", "sz_top", "sz_bot", "balls", "strikes", "stand", "p_throws", "delta_run_exp"])
     df = df[df["sz_top"] > df["sz_bot"]]
 
+    # flip for left-handed batters so positive norm_x is always the same side of the batter
     side = np.where(df["stand"] == "L", -1.0, 1.0)
     df["norm_x"] = df["plate_x"] / PLATE_HALF_WIDTH_FT * side
+    # 0 = middle of this batter's strike zone, +1 / -1 = its top / bottom edge
     sz_mid = (df["sz_top"] + df["sz_bot"]) / 2
     sz_half = (df["sz_top"] - df["sz_bot"]) / 2
     df["norm_z"] = (df["plate_z"] - sz_mid) / sz_half
@@ -107,7 +100,7 @@ def add_location_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_target(df: pd.DataFrame) -> pd.DataFrame:
-    """RunValueTarget: delta_run_exp, with balls in play replaced by an xwOBA-based expected value."""
+    """Step 2: the pitches with RunValueTarget: run value, with balls in play replaced by an xwOBA-based expected value."""
     df = df.copy()
     df["delta_run_exp"] = df["delta_run_exp"].astype(float)
     df["RunValueTarget"] = df["delta_run_exp"]
@@ -120,7 +113,7 @@ def add_target(df: pd.DataFrame) -> pd.DataFrame:
     reg = LinearRegression().fit(X_fit[reg_cols], df.loc[fit_rows, "delta_run_exp"])
     print(f"BIP expected-run-value regression: n = {fit_rows.sum()}, R^2 = {reg.score(X_fit[reg_cols], df.loc[fit_rows, 'delta_run_exp']):.3f}")
 
-    # BIP without an xwOBA (rare tracking gaps) get the league BIP-average xwOBA
+    # balls in play (BIP) with no xwOBA (rare tracking gaps) get the league's average BIP xwOBA
     X_bip = pd.DataFrame({
         "xwoba": xwoba[bip].fillna(xwoba[fit_rows].mean()),
         "balls": df.loc[bip, "balls"], "strikes": df.loc[bip, "strikes"],
@@ -130,7 +123,10 @@ def add_target(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def out_of_fold_predictions(df: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
-    """PredRunValue for every pitch from a model that never saw that pitcher; plus fold R^2 per group."""
+    """Steps 3-4: predicted run value for every pitch from a model that never saw that pitcher, plus each fold's R^2.
+
+    R^2 = share of the pitch-to-pitch spread the model explains (low is expected: one pitch is mostly noise).
+    """
     preds = pd.Series(np.nan, index=df.index)
     fold_rows = []
     for group, g in df.groupby("PitchGroup"):
@@ -145,10 +141,10 @@ def out_of_fold_predictions(df: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
 
 
 def build_scored_pitches(force_refresh: bool = False) -> pd.DataFrame:
-    """League-wide pitches with out-of-fold PredRunValue, cached (the slow step)."""
+    """League-wide pitches with out-of-fold PredRunValue (steps 1-4), cached because it is the slow step."""
     if PITCHES_PATH.exists() and not force_refresh:
         print(f"Using cached out-of-fold predictions ({PITCHES_PATH.name}); --refresh to retrain")
-        # pitchers_only: the cache may predate the position filter
+        # pitchers_only drops position players, in case the cache was saved before that filter existed
         return pitchers_only(pd.read_parquet(PITCHES_PATH), "PitcherId")
 
     print(f"Loading league-wide Statcast {START_DATE} to {END_DATE} (month by month)...")
@@ -175,12 +171,13 @@ def build_scored_pitches(force_refresh: bool = False) -> pd.DataFrame:
 
 
 def summarize_location_plus(scored: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """(pitcher x pitch type, pitcher) tables with LocationPlus on the 100 + 10z scale."""
+    """Steps 5-6: (pitcher x pitch type, pitcher) tables with LocationPlus (100 + 10 x z) and its small-sample version."""
     pitcher = scored.groupby("PitcherId").agg(
         Pitcher=("Pitcher", "first"), PitcherTeam=("PitcherTeam", "first"),
         Pitches=("PredRunValue", "size"), MeanPredRunValue=("PredRunValue", "mean"),
     ).reset_index()
     pitcher["Qualified"] = pitcher["Pitches"] >= MIN_PITCHES_FOR_INCLUSION
+    # sign flipped: a lower run value is better for the pitcher, so higher Location+ = better aim
     pool = -pitcher.loc[pitcher["Qualified"], "MeanPredRunValue"]
     pitcher["LocationPlus"] = scale_100(-pitcher["MeanPredRunValue"], pool).round(1)
 
@@ -198,7 +195,7 @@ def summarize_location_plus(scored: pd.DataFrame) -> tuple[pd.DataFrame, pd.Data
 
 
 def add_regressed(by_type: pd.DataFrame, pitcher: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """LocationPlus_Reg / LocationPlus_Reliability (raw LocationPlus kept as is)."""
+    """Step 6: the tables with LocationPlus_Reg = (n x LocationPlus + k x 100) / (n + k) and its reliability added."""
     k = load_k("LocationPlus")
     pitcher["LocationPlus_Reliability"] = reliability(pitcher["Pitches"], k).round(3)
     pitcher["LocationPlus_Reg"] = regress(pitcher["LocationPlus"], pitcher["Pitches"], k, 100).round(1)
@@ -214,7 +211,7 @@ def add_regressed(by_type: pd.DataFrame, pitcher: pd.DataFrame) -> tuple[pd.Data
 
 
 def save_for_dashboard(by_type: pd.DataFrame, pitcher: pd.DataFrame):
-    """League-wide per-pitch-type Location+ plus each pitcher's overall number, keyed on PitcherId."""
+    """Write league-wide per-pitch-type Location+ rows, plus each pitcher's overall grade, for the dashboard."""
     overall = ["Pitches", "LocationPlus", "LocationPlus_Reg", "LocationPlus_Reliability", "Qualified"]
     rows = by_type.merge(
         pitcher[["PitcherId", *overall]].rename(columns={c: f"Overall{c}" for c in overall}), on="PitcherId",
@@ -225,10 +222,10 @@ def save_for_dashboard(by_type: pd.DataFrame, pitcher: pd.DataFrame):
     print(f"Saved {len(rows)} row(s) to {DASHBOARD_PATH}")
 
 
-# ── Reliability (thesis methods) ─────────────────────────────────────────────
+# ── Reliability check (thesis methods): how repeatable is each aim stat? ─────
 
 def _legacy_command_parts(pitches: pd.DataFrame) -> pd.DataFrame:
-    """EdgePct / MeatballPct per PitcherId, same definitions as asymmetric_upside.classify_zone_location."""
+    """EdgePct (share on the edge of the zone) and MeatballPct (share down the middle) per pitcher."""
     from analysis.asymmetric_upside import EDGE_BAND, MEATBALL_MAX
 
     sz_mid = (pitches["sz_top"] + pitches["sz_bot"]) / 2
@@ -242,7 +239,7 @@ def _legacy_command_parts(pitches: pd.DataFrame) -> pd.DataFrame:
 
 
 def _pa_metrics(pitches: pd.DataFrame) -> pd.DataFrame:
-    """BBPct, FirstPitchStrikePct, ThreeBallPct per PitcherId, one row per plate appearance first."""
+    """Walk rate (BBPct), first-pitch strike rate and three-ball rate per pitcher, counted per plate appearance (PA)."""
     flags = pd.DataFrame({
         "PitcherId": pitches["PitcherId"], "game_pk": pitches["game_pk"], "at_bat_number": pitches["at_bat_number"],
         "Walk": pitches["events"] == "walk",
@@ -263,7 +260,7 @@ def _pa_metrics(pitches: pd.DataFrame) -> pd.DataFrame:
 
 
 def command_metrics(pitch_half: pd.DataFrame, pa_half: pd.DataFrame) -> pd.DataFrame:
-    """Every command metric for one half. Pitch-level metrics use pitch_half, PA-level ones pa_half."""
+    """Every aim (command) stat for one half of the sample: pitch-level ones from pitch_half, per-PA ones from pa_half."""
     from analysis.utils import zscore
 
     out = pd.DataFrame({"LocationPlus": -pitch_half.groupby("PitcherId")["PredRunValue"].mean()})
@@ -277,16 +274,12 @@ RELIABILITY_METRICS = ["LocationPlus", "CommandProxy", "EdgePct", "MeatballPct",
 
 
 def reliability_test(scored: pd.DataFrame) -> pd.DataFrame:
-    """Odd/even split-half reliability of each command metric, plus its correlation with Stuff+.
+    """Table of each aim stat's odd/even split-half reliability and its correlation with Stuff+.
 
-    Pitch-level metrics (LocationPlus, EdgePct, MeatballPct) split each
-    qualified pitcher's pitches into odd and even by order thrown. PA-level
-    metrics (BBPct, FirstPitchStrikePct, ThreeBallPct) split plate
-    appearances odd/even the same way, since they're defined per PA.
-    CommandProxy combines the two (edge/meatball from pitch halves, BB% from
-    PA halves), z-scored within each half like the original.
-    SpearmanBrown = 2r / (1 + r): estimated full-season reliability.
-    CorrWithStuffPlus uses the full season (lower = more separate from stuff).
+    Each qualified pitcher's pitches (or plate appearances, for per-PA stats) are split into odd and even by the
+    order thrown, the stat is computed on both halves, and the halves are correlated across pitchers.
+    SpearmanBrown = 2r / (1 + r): the estimated full-season reliability. CorrWithStuffPlus uses the full season
+    (lower = more separate from stuff).
     """
     counts = scored.groupby("PitcherId").size()
     qualified = counts[counts >= MIN_PITCHES_FOR_INCLUSION].index
@@ -306,7 +299,7 @@ def reliability_test(scored: pd.DataFrame) -> pd.DataFrame:
     stuff = None
     if LEAGUE_PITCHER_PATH.exists():
         stuff_table = pd.read_parquet(LEAGUE_PITCHER_PATH).set_index("PitcherId")
-        # StuffPlus_Final (v3); a table from before v3 only has the ratio StuffPlus
+        # StuffPlus_Final when the table has it (an older table has only the ratio StuffPlus)
         stuff = stuff_table["StuffPlus_Final" if "StuffPlus_Final" in stuff_table else "StuffPlus"]
     else:
         print(f"No {LEAGUE_PITCHER_PATH.name} yet -- run python -m analysis.stuff_plus_proxy for the Stuff+ correlations")
@@ -326,6 +319,7 @@ def reliability_test(scored: pd.DataFrame) -> pd.DataFrame:
 
 
 def run(pitcher: str | None = None, team: str | None = None, force_refresh: bool = False):
+    """Grade the league, then print one pitcher, one team or the league top 20."""
     if pitcher and team:
         raise ValueError("Pass --pitcher or --team, not both")
     pitcher_level = grade_league(force_refresh=force_refresh)
@@ -333,8 +327,10 @@ def run(pitcher: str | None = None, team: str | None = None, force_refresh: bool
 
 
 def grade_league(force_refresh: bool = False) -> pd.DataFrame:
-    """League-wide Location+ tables + dashboard CSV + reliability table, saved. Returns the pitcher table."""
+    """The league-wide pitcher table; also saves both tables, the dashboard CSV and the reliability table."""
+    # 1-4. Normalize location, set the run-value target, train the trees and score out of fold
     scored = build_scored_pitches(force_refresh=force_refresh)
+    # 5-6. Grade on the 100 + 10 x z scale, then pull small samples toward 100
     by_type, pitcher_level = summarize_location_plus(scored)
     by_type.to_parquet(SUMMARY_PATH, index=False)
     pitcher_level.to_parquet(PITCHER_PATH, index=False)
@@ -350,7 +346,7 @@ def grade_league(force_refresh: bool = False) -> pd.DataFrame:
 
 
 def show(pitcher_level: pd.DataFrame, pitcher: str | None = None, team: str | None = None):
-    """Print one pitcher / team / the league top 20 -- grading is always league-wide."""
+    """Print one pitcher, one team or the league top 20 (grades are always league-wide)."""
     if team:
         shown, title = filter_to_team(pitcher_level, team), f"{team}, graded vs. league"
     elif pitcher:

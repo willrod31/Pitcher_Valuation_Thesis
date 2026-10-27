@@ -1,31 +1,21 @@
 """
-Team records from the MLB Stats API (regular season), for comparing each
-team's pitching staff with how the team actually did.
+Each team's season record from the MLB Stats API, and the innings each pitcher threw for each team.
 
-Per team-season: Team, Wins, Losses, WinPct, RunsScored, RunsAllowed,
-RunDiff and Pythagorean wins = G x RS^1.83 / (RS^1.83 + RA^1.83).
-Team = the dashboard's Statcast code (AZ, ATH, CWS, ...); the API's
-abbreviations are mapped through TEAM_CODE_ALIASES and any team that still
-doesn't map is printed (and kept under its API abbreviation).
+In simple terms: wins, losses, runs scored and runs allowed for every team, so the dashboard can compare each
+pitching staff's grades with how the team actually did.
 
-Also the IP each pitcher threw FOR each team (pitcher_team_ip), so a traded
-pitcher's FIP-WAR can be split between his teams. Non-traded pitchers come
-from fip_war's cached season pull (one row, one team); a traded pitcher's
-combined row (numTeams > 1) has no team, so his per-team lines come from
-/people/<id>/stats (cached per pitcher). The /stats?teamId= filter is NOT
-used: it leaves out pitchers who finished the season with another team.
+How it works:
+    1. Standings (regular season): wins, losses, win percentage, runs scored and allowed, run differential, and
+       Pythagorean wins = games x RS^1.83 / (RS^1.83 + RA^1.83) (the wins a team's runs would usually produce).
+    2. Team codes are mapped to the dashboard's Statcast codes (AZ, ATH, CWS, ...); any that don't map are printed.
+    3. Innings per pitcher per team (pitcher_team_ip), so a traded pitcher's FIP-WAR can be split between his
+       teams. A traded pitcher's per-team lines come from /people/<id>/stats, because the /stats?teamId= filter
+       leaves out pitchers who finished the season with another team.
 
-Data (cached to data/raw/mlb_api/):
-    standings/standings_<season>.json   /standings?leagueId=103,104&standingsTypes=regularSeason
-    standings/teams_<season>.json       /teams?sportId=1 (id -> abbreviation)
-    team_splits/pitching_<id>_<season>.json  /people/<id>/stats?stats=season&group=pitching
+Inputs: MLB Stats API (cached in data/raw/mlb_api/standings/ and team_splits/).
+Outputs: data/results/team_records.csv (every season) and dashboard/data/<season>/team_records.csv.
 
-Outputs: data/results/team_records.csv (every season) and
-dashboard/data/<season>/team_records.csv (every season in SEASONS, so the
-League page's pooled Teams view can use them).
-
-    python -m analysis.team_records                  # 2023-2026
-    python -m analysis.team_records --season 2025
+    python -m analysis.team_records [--season 2025]   (default: SEASONS)
 """
 import argparse
 import json
@@ -36,9 +26,9 @@ from analysis.fip_war import fetch_season_pitching, innings_to_float
 from analysis.injury_history import API_BASE, _get_json
 from analysis.utils import BASE_RESULTS_DIR, DASHBOARD_ROOT, MLB_API_DIR
 
-SEASONS = [2023, 2024, 2025, 2026]
-PYTHAGOREAN_EXPONENT = 1.83
-# Statcast team codes, same list as analysis/run_all.TEAMS and dashboard/app.py
+SEASONS = [2023, 2024, 2025, 2026]   # default seasons when none are given
+PYTHAGOREAN_EXPONENT = 1.83         # step 1, the usual baseball value
+# Statcast team codes, the same list as analysis/run_all.TEAMS and dashboard/pitchers.py
 TEAM_CODES = [
     "AZ", "ATH", "ATL", "BAL", "BOS", "CHC", "CIN", "CLE", "COL", "CWS", "DET", "HOU", "KC", "LAA", "LAD",
     "MIA", "MIL", "MIN", "NYM", "NYY", "PHI", "PIT", "SD", "SEA", "SF", "STL", "TB", "TEX", "TOR", "WSH",
@@ -56,10 +46,12 @@ for _d in (STANDINGS_DIR, TEAM_SPLITS_DIR):
 
 
 def team_code(abbreviation: str) -> str:
+    """Step 2: the dashboard's code for an API / FanGraphs abbreviation (unknown ones pass through)."""
     return TEAM_CODE_ALIASES.get(abbreviation, abbreviation)
 
 
 def _cached(path, url: str, params: dict, force_refresh: bool = False):
+    """The API reply saved at `path`, downloading it first if needed."""
     if path.exists() and not force_refresh:
         return json.loads(path.read_text())
     data = _get_json(url, params)
@@ -78,11 +70,12 @@ def team_ids(season: int, force_refresh: bool = False) -> pd.DataFrame:
 
 
 def unmapped(teams: pd.DataFrame) -> pd.DataFrame:
+    """The teams whose code isn't one of the dashboard's 30."""
     return teams[~teams["Team"].isin(TEAM_CODES)]
 
 
 def team_records(season: int, force_refresh: bool = False) -> pd.DataFrame:
-    """One row per team: W, L, WinPct, RS, RA, RunDiff, Pythagorean wins (regular season)."""
+    """Step 1: one row per team: wins, losses, win percentage, runs scored and allowed, run differential, Pythagorean wins."""
     data = _cached(STANDINGS_DIR / f"standings_{season}.json", f"{API_BASE}/standings",
                    {"leagueId": "103,104", "season": season, "standingsTypes": "regularSeason"}, force_refresh)
     rows = []
@@ -100,7 +93,7 @@ def team_records(season: int, force_refresh: bool = False) -> pd.DataFrame:
 
 
 def traded_splits(pitcher_id: int, season: int, force_refresh: bool = False) -> list[dict]:
-    """A traded pitcher's per-team regular-season lines (the combined no-team row left out)."""
+    """A traded pitcher's per-team regular-season lines (his combined, team-less row left out)."""
     data = _cached(TEAM_SPLITS_DIR / f"pitching_{pitcher_id}_{season}.json", f"{API_BASE}/people/{pitcher_id}/stats",
                    {"stats": "season", "group": "pitching", "season": season, "gameType": "R", "sportId": 1},
                    force_refresh)
@@ -109,7 +102,7 @@ def traded_splits(pitcher_id: int, season: int, force_refresh: bool = False) -> 
 
 
 def pitcher_team_ip(season: int, force_refresh: bool = False) -> pd.DataFrame:
-    """PitcherId, TeamId, Team, IP: innings each pitcher threw for each team (MLB Stats API, regular season)."""
+    """Step 3: PitcherId, TeamId, Team, IP: innings each pitcher threw for each team (regular season)."""
     rows = []
     for split in fetch_season_pitching(season):
         pid = split["player"]["id"]
@@ -125,6 +118,7 @@ def pitcher_team_ip(season: int, force_refresh: bool = False) -> pd.DataFrame:
 
 
 def run(seasons: list[int] | None = None, force_refresh: bool = False) -> pd.DataFrame:
+    """Every season's team records (steps 1-2), saved per season and to one combined file."""
     frames = []
     for season in seasons or SEASONS:
         records = team_records(season, force_refresh)
@@ -139,7 +133,7 @@ def run(seasons: list[int] | None = None, force_refresh: bool = False) -> pd.Dat
         records.to_csv(out_dir / "team_records.csv", index=False)
         frames.append(records)
     all_records = pd.concat(frames, ignore_index=True)
-    if RECORDS_PATH.exists() and seasons:   # --season: keep the other seasons already saved
+    if RECORDS_PATH.exists() and seasons:   # --season: keep the other seasons already in the file
         old = pd.read_csv(RECORDS_PATH)
         all_records = pd.concat([old[~old["Season"].isin(seasons)], all_records], ignore_index=True)
     all_records.sort_values(["Season", "Team"]).to_csv(RECORDS_PATH, index=False)

@@ -1,61 +1,23 @@
 """
-Run the whole pipeline for every MLB team (or --teams PIT,LAD), then export
-the dashboard data and the missing-contract report.
+Runs the whole pipeline for every MLB team (or a few), then exports the dashboard data and a missing-contract report.
 
-    python -m analysis.run_all
-    python -m analysis.run_all --teams PIT,LAD
-    python -m analysis.run_all --season 2023     (same as THESIS_SEASON=2023)
-    python -m analysis.run_all --season 2026 --dashboard
+The one command that runs every analysis file in the right order, grades the whole league once, and
+writes everything the dashboard needs. Each team's screen output goes to logs/run_<TEAM>.txt; a failed step is
+logged and the run continues, with every failure listed at the end.
 
---season <YYYY> --dashboard runs the SAME full path as the default season
-(rosters, IL history, contracts from data/salaries_<YYYY>.csv, every module,
-the dashboard exports into dashboard/data/<YYYY>/ and
-data/missing_contract_report_<YYYY>.csv). The flag is explicit rather than
-inferred from a salaries file existing, so a league-only season can never
-write dashboard files by accident. A season after config.CALIBRATION_SEASONS
-gets its FIP-WAR and a projection from config.FROZEN_WAR_MODEL
-(war_calibration.project_frozen) -- the calibration is not rerun or refit.
-A past season (config.PAIR_MODEL_FOR_SEASON: 2022-2024) is display only: its
-FIP-WAR and next season's (the known answer), then an OUT-OF-SAMPLE projection
-from the single-pair model that never saw the next season
-(war_calibration.project_pair_model); again nothing is fit. With no
-data/salaries_<YYYY>.csv, no contract is valued and the missing-contract
-report is skipped (risk_adjusted_value.no_contracts).
+How it works (default season, or --season <YYYY> --dashboard):
+    1. Rosters: each team's pitches are cut out of the cached league months (no extra download per team).
+    2. Per team: injury history and contract estimates (MLB Stats API, cached).
+    3. League, once: load the season month by month, then Stuff+, Location+, Upside Index, volatility, FIP-WAR,
+       the WAR projection (fit, frozen model or single-pair model, by season) and surplus value.
+    4. Per team: each file's team view and the Stuff+ dashboard exports.
+    5. Dashboard export (export_report_data.py), then data/missing_contract_report.csv.
+--season <YYYY> without --dashboard grades the league only (Location+, volatility, injury history, Stuff+,
+Upside Index) into data/results/season_<YYYY>/, plus the two team files the League page's pooled view reads.
 
---season (any season but config.DEFAULT_SEASON) runs the league-wide metrics
-only -- Location+, volatility, injury history (config.INJURY_LOOKBACK_SEASONS
-ending that season), Stuff+ and asymmetric upside, each season training its
-own out-of-fold Stuff+ / Location+ models and reusing the default season's
-stabilization k values. Output goes to data/results/season_<YYYY>/; no
-contracts, no surplus. The only dashboard/data/ files it writes are the two
-team-level ones (dashboard/data/<YYYY>/team_records.csv, team_staff.csv) the
-League page's pooled Teams view reads.
+Inputs: everything the analysis files read. Outputs: data/results/, dashboard/data/<season>/, logs/.
 
-Per team, the modules run in the usual order: injury_history,
-contract_status, stuff_plus_proxy, location_plus_proxy, asymmetric_upside,
-volatility_discount, risk_adjusted_value; export_report_data runs once at
-the end. League-wide training and grading happens ONCE, not per team:
-
-1. Rosters: each team's statcast_team_<TEAM> cache is split out of the
-   cached league monthly pulls (data_acquisition.seed_team_caches_from_league)
-   instead of one Statcast pull per team.
-2. Per team: injury_history and contract_status (MLB Stats API pulls,
-   cached). These run for every team first, because volatility_discount and
-   risk_adjusted_value grade the league using every team's IL history.
-3. League, once: the league-wide Statcast season is loaded month by month
-   (load_season_monthly, fits in 8GB) and shared; Stuff+ and Location+ reuse
-   their cached out-of-fold scores; then upside and volatility are graded
-   league-wide, FIP-WAR and the WAR calibration run (config.WAR_MODEL =
-   "calibrated"; they need the --season runs for the earlier
-   config.CALIBRATION_SEASONS first), then risk-adjusted value.
-4. Per team: each module's team view (graded vs. the league) and the
-   Stuff+ dashboard exports, sliced from the shared league frame by PitcherId
-   (every pitch the pitcher threw all season, any team).
-5. export_report_data, then data/missing_contract_report.csv.
-
-Each team's console output goes to logs/run_<TEAM>.txt, the league steps to
-logs/run_league.txt. A failed step is logged with its traceback, the run
-continues, and every failure is listed at the end.
+    python -m analysis.run_all [--teams PIT,LAD] [--season 2026 --dashboard]
 """
 import argparse
 import contextlib
@@ -65,7 +27,7 @@ import time
 import traceback
 from pathlib import Path
 
-# --season / --dashboard have to be set before config is imported: every module reads them at import time
+# --season / --dashboard must be set before config is imported, because every file reads them at import time
 for _n, _arg in enumerate(sys.argv):
     if _arg == "--season" and _n + 1 < len(sys.argv):
         os.environ["THESIS_SEASON"] = sys.argv[_n + 1]
@@ -89,12 +51,12 @@ from analysis.data_acquisition import (
 )
 from analysis.utils import RESULTS_DIR, STATCAST_TEAM_DIR, WRITES_DASHBOARD
 
-# Statcast team codes (AZ, not ARI), same list as dashboard/app.py
+# Statcast team codes (AZ, not ARI), the same list as dashboard/pitchers.py
 TEAMS = [
     "AZ", "ATH", "ATL", "BAL", "BOS", "CHC", "CIN", "CLE", "COL", "CWS", "DET", "HOU", "KC", "LAA", "LAD",
     "MIA", "MIL", "MIN", "NYM", "NYY", "PHI", "PIT", "SD", "SEA", "SF", "STL", "TB", "TEX", "TOR", "WSH",
 ]
-TEAM_ALIASES = {"ARI": "AZ"}   # FanGraphs / salaries file code -> Statcast
+TEAM_ALIASES = {"ARI": "AZ"}   # FanGraphs / salaries-file code -> Statcast
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 REPORT_PATH = export_report_data.MISSING_REPORT_PATH
 PITCHES_COLUMN = f"Pitches{SEASON}"
@@ -105,19 +67,20 @@ PROBLEM_NO_SALARY = "no salary (not in salaries file, no debut date)"
 PROBLEM_NO_CONTROL = "missing (1 yr assumed)"
 FIX_DEFAULT = "default min"
 FIX_NEEDS_DATA = "needs data"
-SIZE_LIMIT_MB = 25
+SIZE_LIMIT_MB = 25   # GitHub's web upload limit per file
 
-# One league frame for Stuff+ grading, the per-team Stuff+ exports and asymmetric_upside
+# Columns of the one league frame shared by Stuff+ grading, the per-team Stuff+ exports and asymmetric_upside
 LEAGUE_COLUMNS = list(dict.fromkeys(stuff_plus_proxy.SCOPE_COLUMNS + asymmetric_upside.RAW_COLUMNS))
 
 
 class Runner:
-    """Runs steps with stdout/stderr appended to a log file; records failures instead of stopping."""
+    """Runs steps with their screen output appended to a log file; records failures instead of stopping."""
 
     def __init__(self):
         self.failures: list[tuple[str, str, str]] = []
 
     def step(self, scope: str, name: str, fn, *args, **kwargs):
+        """fn(*args, **kwargs)'s result, or None if it failed (logged to logs/run_<scope>.txt)."""
         log_path = LOG_DIR / f"run_{scope}.txt"
         start = time.time()
         with open(log_path, "a") as log, contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
@@ -134,7 +97,7 @@ class Runner:
 
 
 def check_salaries():
-    """Step-1 checks: blank IDs dropped, integer ids, duplicate rows whose Salary differs."""
+    """The cleaned salaries file (or None), after printing its checks: blank ids dropped, duplicate rows that disagree."""
     salaries = contract_status.load_salaries(verbose=True)
     if salaries is None:
         return None
@@ -150,15 +113,11 @@ def team_scope(league: pd.DataFrame, team: str) -> pd.DataFrame:
 
 
 def build_missing_report(pitches_by_id: pd.Series) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """(report rows, per pitcher x team contract resolution) for every pitcher on a team in the dashboard.
+    """(report rows, per pitcher x team contract resolution) for every pitcher on a dashboard team.
 
-    Same rules as risk_adjusted_value.resolve_contracts, applied to every
-    roster pitcher (including those under MIN_PITCHES_TO_DISPLAY, who the
-    dashboard still lists). One row per pitcher x team, so a traded pitcher
-    is counted under each team. Fix = "default min" (valued on the default
-    contract: league minimum, 1 yr, FA) or "needs data" (nothing to value him
-    on, or no years of control). Two-way players aren't valued, so they're
-    not listed.
+    The same rules as risk_adjusted_value.resolve_contracts, one row per pitcher x team. Fix = "default min"
+    (valued at the league minimum for 1 year) or "needs data" (nothing to value him on, or no years of control).
+    Two-way players aren't valued, so they aren't listed.
     """
     roster = pd.read_csv(stuff_plus_proxy.DASHBOARD_PATH, usecols=["PitcherId", "Pitcher", "PitcherTeam"])
     roster = roster.drop_duplicates(["PitcherId", "PitcherTeam"]).rename(columns={"PitcherTeam": "Team"})
@@ -200,6 +159,7 @@ def excluded_non_pitchers(teams: list[str]) -> pd.DataFrame:
 
 
 def print_report_summary(report: pd.DataFrame, rows: pd.DataFrame, excluded: pd.DataFrame, teams: list[str]):
+    """Print where each team's contracts came from, and the report's totals."""
     source = rows["SalarySource"].map({
         risk_adjusted_value.SALARY_SOURCE_CSV: "salaries file rows",
         risk_adjusted_value.SALARY_SOURCE_PRE_ARB: "pre-arb minimum",
@@ -220,6 +180,7 @@ def print_report_summary(report: pd.DataFrame, rows: pd.DataFrame, excluded: pd.
 
 
 def print_file_sizes():
+    """Print every dashboard file's size, flagging any over SIZE_LIMIT_MB."""
     print(f"\n── dashboard/data/ file sizes (limit {SIZE_LIMIT_MB}MB) ──")
     for f in sorted(export_report_data.DASHBOARD_DATA.iterdir()):
         mb = f.stat().st_size / 1e6
@@ -227,6 +188,7 @@ def print_file_sizes():
 
 
 def run(teams: list[str]):
+    """Steps 1-5 for `teams`; returns the list of failed steps."""
     LOG_DIR.mkdir(exist_ok=True)
     for scope in teams + ["league"]:
         (LOG_DIR / f"run_{scope}.txt").write_text(f"python -m analysis.run_all, {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
@@ -257,11 +219,11 @@ def run(teams: list[str]):
     if volatility is not None:
         runner.step("league", "volatility regressions", volatility_discount.run_regressions, volatility[1])
     if WAR_MODEL == "calibrated" and SEASON in PAIR_MODEL_FOR_SEASON:
-        # past season, display only: this and next season's FIP-WAR, then the single-pair model that never saw SEASON + 1
+        # past season (display only): this and next season's FIP-WAR, then the single-pair model that never saw SEASON + 1
         runner.step("league", "fip_war", fip_war.ensure, [SEASON, SEASON + 1])
         runner.step("league", "war_calibration (pair)", war_calibration.project_pair_model, SEASON)
     elif WAR_MODEL == "calibrated" and SEASON in CALIBRATION_SEASONS:
-        # needs data/results/season_<YYYY>/ for the earlier calibration seasons (run_all --season <YYYY>)
+        # needs data/results/season_<YYYY>/ for the earlier calibration seasons (run_all --season <YYYY> first)
         runner.step("league", "fip_war", fip_war.run)
         runner.step("league", "war_calibration", war_calibration.run)
     elif WAR_MODEL == "calibrated":
@@ -324,11 +286,9 @@ def run(teams: list[str]):
 
 
 def run_season():
-    """League-wide metrics for a non-default season (config.SEASON != DEFAULT_SEASON), no contracts or dashboard.
+    """League-wide grades for a non-default season (no contracts, no pitcher dashboard); returns the failed steps.
 
-    Order keeps one league-wide frame in memory at a time (8GB box): Location+
-    and the volatility appearance table each load and free their own monthly
-    frame; then the Stuff+/upside frame is loaded once and shared.
+    The order keeps one league-wide frame in memory at a time (8GB machine).
     """
     LOG_DIR.mkdir(exist_ok=True)
     scope = f"league_{SEASON}"
@@ -358,7 +318,7 @@ def run_season():
             runner.step(scope, "asymmetric_upside", asymmetric_upside.grade_league, df=league)
     league = None
     # team-level files only (team_records.csv, team_staff.csv in dashboard/data/<YYYY>/) for the League page's pooled
-    # Teams view; the season itself still isn't selectable on the dashboard (dashboard/season.py SEASONS)
+    # Teams view; the season is selectable on the dashboard only if it is in dashboard/season.py SEASONS
     runner.step(scope, "fip_war", fip_war.ensure, [SEASON])
     runner.step(scope, "team_records", team_records.run, [SEASON])
     runner.step(scope, "team_staff", export_report_data.export_team_staff, SEASON)

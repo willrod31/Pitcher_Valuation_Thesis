@@ -1,9 +1,14 @@
-# Pitch-type display labels. Data stays keyed by Statcast code (FF, ST, ...);
-# convert with these helpers only when something is drawn on screen.
+"""
+Pitch-type names, short codes and colors for the dashboard.
 
-# Fixed hue order (Okabe-Ito, colorblind-safe) so a pitch type keeps the same
-# color everywhere it appears. Canonical Statcast pitch-type order, not
-# alphabetical, so fastball variants group together.
+How it works: the data stays keyed by Statcast's pitch codes (FF = four-seam fastball, ST = sweeper, ...); these
+helpers turn a code into its full name or the industry-standard abbreviation only when something is drawn.
+Each pitch type keeps one color everywhere (a colorblind-safe palette), listed fastballs first.
+
+Imported by the dashboard pages; not run on its own.
+"""
+
+# Standard Statcast order (fastballs first, not alphabetical) and one fixed color each
 PITCH_TYPE_ORDER = ["FF", "SI", "FC", "SL", "ST", "CU", "KC", "CH", "FS", "FO", "SV"]
 PITCH_TYPE_COLORS = dict(zip(PITCH_TYPE_ORDER, [
     "#0072B2", "#56B4E9", "#009E73", "#D55E00", "#E69F00",
@@ -33,6 +38,6 @@ def pitch_name(code: str) -> str:
 
 
 def pitch_label(code: str) -> str:
-    """ "SW (Sweeper)" for hovers and tables. """
+    """ "SW (Sweeper)", for hovers and tables. """
     name = PITCH_TYPE_NAMES.get(code)
     return f"{pitch_abbr(code)} ({name})" if name else pitch_abbr(code)

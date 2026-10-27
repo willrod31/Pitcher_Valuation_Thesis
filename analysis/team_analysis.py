@@ -1,25 +1,22 @@
 """
-Do teams with better staff metrics allow fewer runs and win more?
+Do teams with better pitching-staff grades allow fewer runs and win more? Correlations and a regression.
 
-Reads each season's team-level exports (dashboard/data/<season>/team_staff.csv,
-Group = all, and team_records.csv) for every season that has both, then:
+In simple terms: we average each team's pitching staff (team_staff.csv) and compare it with how the team actually
+did that season (team_records.csv): runs allowed, run differential (runs scored minus allowed) and wins.
 
-1. Pearson r, r^2 and p of each staff metric (pitch-weighted Stuff+,
-   Location+, Upside Index, Volatility percentile, staff FIP-WAR, pitching
-   payroll) with RunsAllowed, RunDiff and Wins -- per season and pooled.
-2. OLS on the pooled team-seasons: RunsAllowed ~ staff Stuff+ + staff Location+
-   (coefficients, SE, p).
-3. Sanity check: staff FIP-WAR vs. RunsAllowed should be clearly negative
-   (FIP-WAR is built from the same K, BB, HBP, HR and innings).
-4. The 5 team-seasons that most outperformed (allowed fewer runs than the
-   regression predicts) and most underperformed their staff metrics.
+How it works (every season with both files; staff = all pitchers):
+    1. Pearson correlation r (-1 to 1; 0 = no straight-line link), r^2 (share of the spread explained) and p
+       (chance of a link this strong by luck alone) of each staff metric (pitch-weighted Stuff+, Location+,
+       Upside Index, volatility percentile, staff FIP-WAR, pitching payroll) with each outcome, per season and pooled.
+    2. Ordinary least squares (OLS) on the pooled team-seasons: RunsAllowed ~ staff Stuff+ + staff Location+.
+    3. Sanity check: staff FIP-WAR vs. runs allowed should be clearly negative (FIP-WAR is built from the same
+       strikeouts, walks, hit batters, home runs and innings).
+    4. The 5 team-seasons that most beat (fewer runs than predicted) and most missed their staff's prediction.
+30 teams a season is a small sample, and pooled seasons are not adjusted for each season's scoring level.
+Payroll exists only for seasons with a salaries file.
 
-30 teams per season (60-120 pooled) is a small sample: p-values are printed
-as they are. Pooled seasons are not adjusted for the league run environment.
-Payroll exists only for seasons with a salaries file (2025, 2026).
-
-Outputs (data/results/): team_analysis.csv (the correlation table),
-team_analysis_ols.csv, team_analysis_residuals.csv.
+Inputs: dashboard/data/<season>/team_staff.csv and team_records.csv.
+Outputs: data/results/team_analysis.csv, team_analysis_ols.csv, team_analysis_residuals.csv.
 
     python -m analysis.team_analysis
 """
@@ -41,7 +38,7 @@ OLS_TERMS = ["StuffPlus", "LocationPlus"]
 OUT_PATH = BASE_RESULTS_DIR / "team_analysis.csv"
 OLS_PATH = BASE_RESULTS_DIR / "team_analysis_ols.csv"
 RESIDUALS_PATH = BASE_RESULTS_DIR / "team_analysis_residuals.csv"
-N_RESIDUALS = 5
+N_RESIDUALS = 5   # team-seasons listed at each end (step 4)
 
 
 def team_seasons() -> pd.DataFrame:
@@ -57,6 +54,7 @@ def team_seasons() -> pd.DataFrame:
 
 
 def correlations(df: pd.DataFrame, label: str) -> list[dict]:
+    """Step 1: one row per staff metric x outcome with n, r, r^2 and p."""
     rows = []
     for metric in METRICS:
         for outcome in OUTCOMES:
@@ -70,6 +68,7 @@ def correlations(df: pd.DataFrame, label: str) -> list[dict]:
 
 
 def run():
+    """(correlation table, OLS model, residual table) after steps 1-4; also saves the three output files."""
     df = team_seasons()
     seasons = sorted(df["Season"].unique())
     print(f"Team-seasons: {len(df)} ({', '.join(f'{s}: {(df.Season == s).sum()}' for s in seasons)})")
@@ -91,11 +90,13 @@ def run():
         print(wide.to_string())
     print(f"\nSaved {len(table)} rows to {OUT_PATH}")
 
+    # 3. Sanity check
     print("\n── Sanity check: staff FIP-WAR vs. RunsAllowed (should be clearly negative) ──")
     for _, row in table[(table["Metric"] == "FIPWAR") & (table["Outcome"] == "RunsAllowed")].iterrows():
         verdict = "OK, clearly negative" if row["r"] <= -0.5 and row["p"] < 0.01 else "NOT clearly negative -- check"
         print(f"  {row['Seasons']:<15} r = {row['r']:+.3f}, r2 = {row['r2']:.3f}, p = {row['p']:.2g}, n = {row['n']}: {verdict}")
 
+    # 2. RunsAllowed ~ staff Stuff+ + staff Location+, pooled
     data = df.dropna(subset=OLS_TERMS + ["RunsAllowed"])
     model = sm.OLS(data["RunsAllowed"], sm.add_constant(data[OLS_TERMS])).fit()
     ols = pd.DataFrame({"coef": model.params, "SE": model.bse, "t": model.tvalues, "p": model.pvalues})
@@ -105,6 +106,7 @@ def run():
     print(f"R2 = {model.rsquared:.3f}, adj. R2 = {model.rsquared_adj:.3f}, F p = {model.f_pvalue:.3g}. "
           "Read: each +1 point of staff Stuff+ / Location+ changes runs allowed by the coef, holding the other fixed.")
 
+    # 4. Teams that most beat or missed the prediction
     resid = data[["Season", "Team", "RunsAllowed", *OLS_TERMS, "FIPWAR", "Wins", "Losses"]].copy()
     resid["PredictedRA"] = model.fittedvalues.round(0)
     resid["Residual"] = (resid["RunsAllowed"] - model.fittedvalues).round(1)   # negative = allowed fewer than predicted
