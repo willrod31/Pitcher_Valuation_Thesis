@@ -1,7 +1,7 @@
 """
 Loads public Statcast pitch data (via the pybaseball library), caches it, and cleans it for every other file.
 
-In simple terms: Statcast is MLB's tracking system; it records every pitch's speed, spin, movement, release point
+Statcast is MLB's tracking system; it records every pitch's speed, spin, movement, release point
 and where it crossed the plate. This file downloads it once, saves it to disk, and removes bad readings.
 
 How it works:
